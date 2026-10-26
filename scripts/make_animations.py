@@ -1125,7 +1125,9 @@ def anim_17_deim_greedy():
     fig = new_fig()
     ax = fig.add_axes([0.02, 0.17, 0.60, 0.70])
     ax2 = fig.add_axes([0.76, 0.25, 0.22, 0.58])
-    im = ax.imshow(np.zeros((ny, nx)), origin="lower", extent=ext, cmap=CMAP_SEQ, vmin=0, vmax=1,
+    # light low end: the slide is printed, so a mostly zero map must stay white
+    light_seq = matplotlib.colors.LinearSegmentedColormap.from_list("light_seq", ["#ffffff", ACC3, ACC5])
+    im = ax.imshow(np.zeros((ny, nx)), origin="lower", extent=ext, cmap=light_seq, vmin=0, vmax=1,
                    interpolation="bilinear", aspect="equal")
     ax.add_patch(plt.Circle((xc, yc), rad, color=CARD, zorder=3))
     ax.set_xticks([])

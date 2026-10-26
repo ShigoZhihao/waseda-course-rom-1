@@ -505,7 +505,7 @@ def s03_why(prs):
     box(s, 13.5, y + 0.9, 6.6, 2.8, [
         {"t": "ROM", "size": 26, "bold": True, "space_after": 0},
         {"t": "自由度 r ≪ n の近似モデル", "size": 14},
-    ], fill=ACC1)
+    ], fill=HEAD_FILL, line=ACC1, line_w=1.5)
     arrow(s, 20.3, y + 2.3, 22.5, y + 2.3, width=3)
     # right: 1D system model as a chain of components
     comps = ["ポンプ", "管路", "水車", "制御"]
@@ -594,7 +594,7 @@ def s05_quadrant(prs):
         {"t": "パラメータ：1回の計算の中では変えない条件（流量・回転数・形状・入口温度など）。"
               "時間：1回の計算の中で進む変数", "size": 14, "color": GREY},
         {"t": "PVC（precessing vortex core）：旋回流の渦心が軸のまわりを回る振れ回り。"
-              f"GP：ガウス過程回帰。OpInf・LaSDI は {pg('18')}・{pg('22')} で説明", "size": 14, "color": GREY},
+              f"GP：ガウス過程回帰。OpInf は {pg('18')}、LaSDI は {pg('20')}・{pg('22')} で説明", "size": 14, "color": GREY},
         {"t": "表は Benner et al. (2015) の分類を簡略化したもの", "size": 14, "color": GREY},
     ], size=14)
     cite(s, "Benner, Gugercin, Willcox, SIAM Review 57(4):483–531, 2015（分類の簡略化）")
@@ -744,7 +744,7 @@ def s09_pod_pca(prs):
                                               "color": GREY}], size=14)
     cite(s, "B&K §1.5")
     notes(s, "PCA と POD は同じ計算。違うのは前処理と、行列を立てるか寝かせるか。\n"
-             "sklearn の PCA に X をそのまま渡すと、空間モードが逆側（components_）に出る。\n"
+             "sklearn の PCA に X（n×m）をそのまま渡すと、空間の点を標本とみなすので、components_ には時間方向のモードが出る。引かれる平均も時間平均の場ではなく、各時刻の空間平均になる。空間モードがほしいときは X.T を渡す。\n"
              "【アニメーション】左の3項目：上から順に")
 
 
@@ -809,14 +809,14 @@ def s11_dmd1(prs):
 
 def s12_dmd2(prs):
     s = new_slide(prs, LY_ONE, "DMD②", "POD との違いと、ノイズの落とし穴")
-    y = claim(s, "POD はエネルギー順（周波数は混ざりうる）、DMD は周波数順（各モードが単一周波数＋成長率）")
+    y = claim(s, "POD はエネルギー順（周波数は混ざりうる）、DMD は周波数ごと（各モードが単一周波数＋成長率）")
     gw = 11.5
     picture(s, ANIM / "12_noise_eigs.gif", L, y, w=gw)
     gy = y + gw * 9 / 16 + 0.2
     card(s, L, gy, gw, BODY_BOTTOM - gy, "落とし穴：ノイズで固有値が内側（減衰側）へ", [
-        {"t": "計測ノイズで固有値が減衰側に偏る（Dawson et al. 2016）→ fbDMD・tlsDMD で補正", "bullet": True},
-        {"t": "ランク r：「ランクは注目周波数が明確に特定できるまで数回試行して決めた。"
-              "95% 基準では PIV のノイズ成分の DMD モードが卓越することがある」（博論 p.93）",
+        {"t": "偏り（Dawson 2016）は fbDMD・tlsDMD で補正", "bullet": True},
+        {"t": "ランク r：「注目したい周波数成分が明確に特定できるぐらいまで…試行錯誤して決めてもいい」"
+              "「95%と設定しても，ノイズ成分の DMD モード振幅が卓越する場合が多い」（博論 p.93）",
          "bullet": True, "size": 12, "color": GREY},
     ], size=13)
     rx = L + gw + 0.5
@@ -825,7 +825,7 @@ def s12_dmd2(prs):
     ty = y + h + 0.05
     textbox(s, rx, ty, rw, 1.4, [
         {"t": "演習①：きれいな円柱では POD 係数もほぼ1周波数。DMD は固有値として離散的に出る", "size": 14, "space_after": 0},
-        {"t": "周波数が共存する実験では、DMD の方が分けやすい（博論：位相平均より妥当）", "size": 13, "color": GREY},
+        {"t": "周波数が多数ある流れでは、位相平均より POD・DMD のモード分解が妥当（博論 p.119）", "size": 13, "color": GREY},
     ], size=14)
     ty += 1.45
     avail = BODY_BOTTOM - ty - 0.85
@@ -1173,7 +1173,8 @@ def s22_frontier(prs):
     ch = BODY_BOTTOM - y - 1.4
     for k, (head, items) in enumerate(cols):
         x = L + k * (cw + GAP)
-        box(s, x, y, cw, 1.3, [{"t": head, "size": 22, "bold": True}], fill=ACC1, shape=MSO_SHAPE.PENTAGON)
+        box(s, x, y, cw, 1.3, [{"t": head, "size": 22, "bold": True}], fill=HEAD_FILL, line=ACC1, line_w=1.0,
+            shape=MSO_SHAPE.PENTAGON)
         card(s, x, y + 1.5, cw, BODY_BOTTOM - 1.1 - (y + 1.5), None,
              [{"t": t, "bullet": True, "space_after": 8} for t in items], size=14)
     textbox(s, L, BODY_BOTTOM - 0.9, CW, 0.9, [
@@ -1202,14 +1203,14 @@ def s23_workflow(prs):
     rh = (BODY_BOTTOM - y - 0.2) / n
     for k, (head, q) in enumerate(steps):
         yy = y + k * rh
-        box(s, L, yy, 5.4, rh - 0.35, [{"t": head, "size": 20, "bold": True}], fill=ACC1 if k < 5 else WARM,
-            color=WHITE if k < 5 else DEEP)
+        box(s, L, yy, 5.4, rh - 0.35, [{"t": head, "size": 20, "bold": True}], fill=HEAD_FILL if k < 5 else WARM,
+            line=ACC1 if k < 5 else None, line_w=1.0)
         if k < n - 1:
             arrow(s, L + 2.7, yy + rh - 0.35, L + 2.7, yy + rh, color=ACC1, width=2)
         textbox(s, L + 5.8, yy, 18.4, rh - 0.35, [{"t": f"「{q}」"}], size=20, anchor=MSO_ANCHOR.MIDDLE)
     card(s, 26.0, y, L + CW - 26.0, 5.0, "使い方", [
         f"思考実験（{pg('24')}）で、この6項目を埋める",
-        f"答え合わせ（{pg('25a')}）も同じ6項目の表で行う",
+        f"答え合わせ（{pg('25a')}–{PAGE['25b']}）も同じ6項目の表で行う",
     ], size=15)
     notes(s, "ROM を作り始める前に、6つの問いに上から答える。手法は4番目。最初に手法を決めない。\n"
              "【アニメーション】6ステップ：上から順に")
@@ -1324,7 +1325,7 @@ def s25b_skeleton(prs):
         {"t": "壁から離れたモードは予測できない（R² = −3.4 〜 −187）", "bullet": True},
         {"t": "3つの固定運転点での再構成。運転点をまたぐ予測ではない", "bullet": True},
     ], size=14)
-    cite(s, "劉 (2022) 博士論文 Fig. 3.31, 3.33, p.76–77｜Zhang et al., Energies 19(10):2300, 2026")
+    cite(s, "劉 (2022) 博士論文 Fig. 3.31, 3.33, p.74–77｜Zhang et al., Energies 19(10):2300, 2026")
     notes(s, "(A) の答えの核：物理モデル（偏心した渦の圧力場）が骨組み。決めるパラメータは軌道半径と循環の2つ。"
              "これを PIV から同定すれば、1D モデルに渡す励振源になる。EPFL の Favrel らが励振源の強さを軌道半径・周波数・循環に結び付けたのと同じ考え方。\n"
              "右下はブラックボックスとの比較。")
