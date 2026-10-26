@@ -11,6 +11,10 @@ Usage:
   python scripts/make_animations.py                 # all, in priority order
   python scripts/make_animations.py --only 07 11    # names that start with 07 or 11
   python scripts/make_animations.py --check-only    # check the files that exist
+
+In a notebook (plays the animation inline, as in Colab):
+  import make_animations as ma
+  ma.show("07_modes_and_coeffs")
 """
 import argparse
 import functools
@@ -22,12 +26,10 @@ import time
 
 import numpy as np
 import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib import font_manager  # noqa: E402
-from matplotlib.animation import FuncAnimation, FFMpegWriter, PillowWriter  # noqa: E402
-from PIL import Image  # noqa: E402
+import matplotlib.pyplot as plt
+from matplotlib import font_manager
+from matplotlib.animation import FuncAnimation, FFMpegWriter, PillowWriter
+from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -45,6 +47,7 @@ FPS = (10, 15)
 
 
 # ---------------------------------------------------------------- style
+
 def _font_family():
     """Arial like the slides, Meiryo UI for Japanese; only fonts that are installed."""
     have = {f.name for f in font_manager.fontManager.ttflist}
@@ -53,7 +56,14 @@ def _font_family():
     return [f for f in want if f in have] or ["DejaVu Sans"]
 
 
-plt.rcParams.update({
+def _has_japanese_font():
+    """Colab has no Japanese font; text that needs one falls back to English there."""
+    have = {f.name for f in font_manager.fontManager.ttflist}
+    return any(f in have for f in ("Meiryo UI", "Meiryo", "Yu Gothic", "Noto Sans CJK JP", "IPAexGothic"))
+
+
+# Applied only while an animation is built and drawn, so a notebook keeps its own style.
+STYLE = {
     "font.family": _font_family(),
     "font.size": 13,
     "axes.titlesize": 14,
@@ -69,7 +79,7 @@ plt.rcParams.update({
     "axes.prop_cycle": matplotlib.cycler(color=[ACC4, WARM, ACC1, ACC2, ACC3, ACC5]),
     "mathtext.fontset": "dejavusans",
     "axes.unicode_minus": False,
-})
+}
 
 
 def new_fig():
@@ -169,21 +179,43 @@ plt.rcParams["animation.ffmpeg_path"] = _ffmpeg_path()
 def render(name):
     """Write <name>.gif, <name>.mp4 and <name>.png (first frame) into figures/anim/."""
     os.makedirs(OUT, exist_ok=True)
-    made = ANIMS[name][1]()
-    fig, update, n, fps = made["fig"], made["update"], made["frames"], made["fps"]
     base = os.path.join(OUT, name)
+    with plt.rc_context(STYLE):
+        made = ANIMS[name][1]()
+        fig, update, n, fps = made["fig"], made["update"], made["frames"], made["fps"]
+        update(0)
+        fig.savefig(base + ".png", dpi=DPI)
 
-    update(0)
-    fig.savefig(base + ".png", dpi=DPI)
-
-    anim = FuncAnimation(fig, update, frames=n, interval=1000 / fps, blit=False)
-    gif = QuantizedPillowWriter(fps=fps)
-    anim.save(base + ".gif", writer=gif, dpi=DPI)
-    mp4 = FFMpegWriter(fps=fps, codec="libx264", bitrate=-1,
-                       extra_args=["-pix_fmt", "yuv420p", "-crf", "20"])
-    anim.save(base + ".mp4", writer=mp4, dpi=DPI)
+        anim = FuncAnimation(fig, update, frames=n, interval=1000 / fps, blit=False)
+        gif = QuantizedPillowWriter(fps=fps)
+        anim.save(base + ".gif", writer=gif, dpi=DPI)
+        mp4 = FFMpegWriter(fps=fps, codec="libx264", bitrate=-1,
+                           extra_args=["-pix_fmt", "yuv420p", "-crf", "20"])
+        anim.save(base + ".mp4", writer=mp4, dpi=DPI)
     plt.close(fig)
     return gif.colors_used
+
+
+def jshtml(name, dpi=72):
+    """The animation as HTML with play controls (matplotlib to_jshtml), for Jupyter and Colab.
+
+    dpi 72 gives 691 x 389 px frames; JPEG frames keep the HTML at about 40 % of PNG.
+    """
+    with plt.rc_context({**STYLE, "animation.frame_format": "jpeg"}):
+        made = ANIMS[name][1]()
+        fig = made["fig"]
+        fig.set_dpi(dpi)
+        anim = FuncAnimation(fig, made["update"], frames=made["frames"],
+                             interval=1000 / made["fps"], blit=False)
+        html = anim.to_jshtml(fps=made["fps"], default_mode="loop")
+    plt.close(fig)
+    return html
+
+
+def show(name, dpi=72):
+    """Play one animation inline in a notebook. The same GIF is in figures/anim/."""
+    from IPython.display import HTML, display
+    display(HTML(jshtml(name, dpi)))
 
 
 # ---------------------------------------------------------------- check
@@ -1030,8 +1062,8 @@ def anim_14a_pvc_orbit():
     fig.text(0.80, 0.91, "Wall pressure", fontsize=18, ha="center")
     fig.text(0.80, 0.83, r"$p'(\theta_s,t) \propto \cos(\theta_s - 2\pi f t)$", fontsize=16,
              ha="center")
-    fig.text(0.985, 0.025, "合成データ（博論 Fig. 3.12 の r* を模擬）", fontsize=16, ha="right",
-             va="bottom")
+    note = "合成データ（博論 Fig. 3.12 の r* を模擬）" if _has_japanese_font()         else "synthetic data (r* as in thesis Fig. 3.12)"
+    fig.text(0.985, 0.025, note, fontsize=16, ha="right", va="bottom")
 
     tail_n = 10
 
@@ -1193,6 +1225,7 @@ def anim_19_manifold_vs_subspace():
 # ---------------------------------------------------------------- main
 
 def main():
+    matplotlib.use("Agg")
     p = argparse.ArgumentParser()
     p.add_argument("--only", nargs="*", default=None, help="name prefixes, for example 07 10b")
     p.add_argument("--check-only", action="store_true")
