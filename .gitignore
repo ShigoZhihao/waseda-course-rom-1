@@ -1,0 +1,17 @@
+# Source documents that must not be published (thesis PDF, decks, textbook PDF).
+docs/Honbun-9040.pdf
+docs/*.pptx
+docs/*.pdf
+
+# Crops of the thesis figures: not for redistribution (see figures/thesis/README.md)
+figures/thesis/*.png
+
+# Raw downloads
+data/_download/
+
+__pycache__/
+.ipynb_checkpoints/
+
+# Local report pages (they can embed thesis figures)
+docs/reports/
+figures/thesis/_work/
