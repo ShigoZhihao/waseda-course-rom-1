@@ -1225,6 +1225,261 @@ def anim_19_manifold_vs_subspace():
     return dict(fig=fig, update=update, frames=frames, fps=fps)
 
 
+# ---------------------------------------------------------------- draft tube surrogate (toy model)
+# Synthetic data only. A simple physics model plays the role of the experiment and the 3D CFD.
+# Inputs: q = Q/Q_BEP and sigma (Thoma number); n_ED and the Froude number are fixed.
+# Rotating part: free-vortex wall pressure -K/d^2 (thesis eq. 3-28 to 3-39, no image vortex).
+# Synchronous part: elbow source (non-zero without cavitation) x 1D system response H(f; sigma).
+SG_Q = (0.62, 0.85)            # vortex rope regime in Q/Q_BEP (Favrel+ 2017; Doerfler 2017)
+SG_ZETA = 0.12                 # damping ratio of the 1D system response
+SG_NR, SG_NT = 40, 120         # polar grid: radial cells, angular cells
+SG_SENS = np.deg2rad([0.0, 90.0, 180.0, 270.0])
+
+
+def _sg_f0(s):
+    """Natural frequency f0/n of the 1D system. Compliance C ~ exp(-b sigma), f0 ~ 1/sqrt(L C)."""
+    return 0.12 * np.exp(9.15 * (s - 0.08))
+
+
+def _sg_H(f, s):
+    """Response of the 1D system (one mode, idealised: no lock-in, no hysteresis)."""
+    x = f / _sg_f0(s)
+    return 1.0 / (1.0 - x ** 2 + 2j * SG_ZETA * x)
+
+
+def _sg_truth_params(q, s):
+    """Skeleton parameters of the toy truth: orbit radius r*, K = Gamma*^2, core radius a, f/n, source S0."""
+    rs = 0.06 + 0.22 * (np.clip(0.86 - q, 0, None) / 0.24) ** 0.7
+    K = (0.6 + 1.2 * (1.0 / q - 1.0 / 0.86)) ** 2
+    a = 0.10 + 0.12 * np.exp(-(s - 0.08) / 0.04)
+    f = 0.25 + 0.35 * 0.02 * np.log1p(np.exp((0.78 - q) / 0.02)) + 0.03 * (0.14 - s)
+    return rs, K, a, f, 0.6 * rs * K
+
+
+def _sg_grid():
+    rc = (np.arange(SG_NR) + 0.5) / SG_NR
+    th = 2 * np.pi * np.arange(SG_NT) / SG_NT
+    return np.append(rc, 1.0), th           # the last ring is the wall (r = 1)
+
+
+def _sg_field(rs, K, a):
+    """Rankine-vortex pressure in the frame that turns with the vortex (vortex at angle 0).
+
+    Rows: radial cells, then the wall ring. The wall is outside the core, so the wall value is -K/d^2.
+    """
+    r, th = _sg_grid()
+    d2 = r[:, None] ** 2 + rs ** 2 - 2 * r[:, None] * rs * np.cos(th[None, :])
+    return np.where(d2 >= a ** 2, -K / np.maximum(d2, 1e-12), -K / a ** 2 * (2 - d2 / a ** 2))
+
+
+def _sg_rbf_fit(P, Y):
+    """Thin-plate spline with a linear tail. P (m, 2) scaled inputs, Y (m, k) outputs."""
+    m = len(P)
+    r = np.linalg.norm(P[:, None] - P[None], axis=2)
+    Phi = np.where(r > 0, r ** 2 * np.log(np.maximum(r, 1e-300)), 0.0)
+    Pp = np.hstack([np.ones((m, 1)), P])
+    A = np.block([[Phi, Pp], [Pp.T, np.zeros((3, 3))]])
+    return np.linalg.solve(A, np.vstack([Y, np.zeros((3, Y.shape[1]))])), P
+
+
+def _sg_rbf_eval(model, p):
+    c, P = model
+    r = np.linalg.norm(P - p, axis=1)
+    phi = np.where(r > 0, r ** 2 * np.log(np.maximum(r, 1e-300)), 0.0)
+    return np.concatenate([phi, [1.0, *p]]) @ c
+
+
+@functools.lru_cache(maxsize=None)
+def sg_surrogate():
+    """Train the surrogate on a 4 x 4 grid of operating points.
+
+    Field: phase-locked field (frame turning with the vortex) -> POD -> RBF on the POD coefficients.
+    Scalars: f/n and the source S0 -> RBF. The synchronous part uses the known 1D model H(f; sigma).
+    """
+    qs = np.linspace(0.63, 0.84, 4)
+    ss = np.linspace(0.09, 0.20, 4)
+    pts = np.array([(q, s) for s in ss for q in qs])
+    lo, hi = np.array([SG_Q[0], 0.08]), np.array([SG_Q[1], 0.20])
+    scale = lambda p: (np.asarray(p) - lo) / (hi - lo)          # noqa: E731
+    F = []
+    sc = []
+    for q, s in pts:
+        rs, K, a, f, S0 = _sg_truth_params(q, s)
+        F.append(_sg_field(rs, K, a).ravel())
+        sc.append([f, S0])
+    F = np.array(F).T
+    mean = F.mean(axis=1, keepdims=True)
+    U, S, _ = np.linalg.svd(F - mean, full_matrices=False)
+    r = int(np.searchsorted(np.cumsum(S ** 2) / np.sum(S ** 2), 0.9999) + 1)
+    coef = U[:, :r].T @ (F - mean)
+    model_a = _sg_rbf_fit(scale(pts), coef.T)
+    model_s = _sg_rbf_fit(scale(pts), np.array(sc))
+
+    def predict(q, s):
+        p = scale((q, s))
+        field = (mean[:, 0] + U[:, :r] @ _sg_rbf_eval(model_a, p)).reshape(SG_NR + 1, SG_NT)
+        f, S0 = _sg_rbf_eval(model_s, p)
+        return field, f, S0
+
+    return dict(pts=pts, predict=predict, r=r)
+
+
+def _sg_wave(ring, f, sync, tn):
+    """Wall pressure at the sensors over the time axis tn = t n. ring: wall values in the turning frame."""
+    th = 2 * np.pi * np.arange(SG_NT) / SG_NT
+    ph = 2 * np.pi * f * tn
+    out = []
+    for ts in SG_SENS:
+        rot = np.interp(np.mod(ts - ph, 2 * np.pi), th, ring, period=2 * np.pi) - ring.mean()
+        out.append(rot + abs(sync) * np.cos(ph + np.angle(sync)))
+    return np.array(out)
+
+
+@register("25_surrogate_map", "recommended")
+def anim_25_surrogate_map():
+    """A moving operating point on the (Q/Q_BEP, sigma) map; the surrogate predicts the field and the
+    wall-pressure waveforms at once. Truth = the toy physics model at the same point.
+    """
+    ja = _has_japanese_font()
+    T = (lambda j, e: j) if ja else (lambda j, e: e)
+    sg = sg_surrogate()
+    predict = sg["predict"]
+    t0 = time.perf_counter()
+    for _ in range(200):
+        predict(0.73, 0.15)
+    ms = (time.perf_counter() - t0) / 200 * 1e3
+
+    N, fps = 90, 12
+    ang = 2 * np.pi * np.arange(N) / N + np.deg2rad(128)    # frame 0 sits in the resonance band
+    path = np.c_[0.735 + 0.09 * np.cos(ang), 0.145 + 0.05 * np.sin(ang)]
+    tn = np.linspace(0, 8, 240)
+    frames = []
+    for (q, s) in path:
+        rs, K, a, f, S0 = _sg_truth_params(q, s)
+        Ft = _sg_field(rs, K, a)
+        Fr, fr, S0r = predict(q, s)
+        wt = _sg_wave(Ft[-1], f, S0 * _sg_H(f, s), tn)
+        wr = _sg_wave(Fr[-1], fr, S0r * _sg_H(fr, s), tn)
+        pt = Ft[:-1] - Ft[:-1].mean(axis=1, keepdims=True)
+        pr = Fr[:-1] - Fr[:-1].mean(axis=1, keepdims=True)
+        frames.append(dict(q=q, s=s, f=f, fr=fr, pt=pt, pr=pr, wt=wt, wr=wr,
+                           ef=np.linalg.norm(pr - pt) / np.linalg.norm(pt),
+                           ew=np.linalg.norm(wr - wt) / np.linalg.norm(wt),
+                           res=abs(f / _sg_f0(s) - 1) < 0.1))
+    ef = np.array([d["ef"] for d in frames])
+    ew = np.array([d["ew"] for d in frames])
+    print(f"25_surrogate_map: POD modes {sg['r']}, field error mean {ef.mean():.3f} max {ef.max():.3f}, "
+          f"waveform error mean {ew.mean():.3f} max {ew.max():.3f}, predict {ms:.2f} ms")
+
+    fig = new_fig()
+    fig.text(0.02, 0.965, T("運転点を動かすと、流れ場と壁面圧力をその場で予測", "Move the operating point: field "
+                            "and wall pressure predicted at once"), fontsize=17, va="top")
+    # operating map
+    axm = fig.add_axes([0.075, 0.37, 0.235, 0.45])
+    qg = np.linspace(0.56, 0.90, 200)
+    sgr = np.linspace(0.08, 0.21, 200)
+    QG, SGm = np.meshgrid(qg, sgr)
+    band = np.abs(_sg_truth_params(QG, SGm)[3] / _sg_f0(SGm) - 1) < 0.1
+    axm.contourf(QG, SGm, band.astype(float), levels=[0.5, 1.5], colors=[WARM], alpha=0.45)
+    for x0, x1 in ((0.56, SG_Q[0]), (SG_Q[1], 0.90)):
+        axm.axvspan(x0, x1, color=DEEP_BLUE, alpha=0.12, lw=0)
+    axm.text(0.59, 0.205, T("範囲外", "out"), fontsize=12, ha="center", va="top", rotation=90)
+    axm.text(0.875, 0.205, T("範囲外", "out"), fontsize=12, ha="center", va="top", rotation=90)
+    axm.plot(sg["pts"][:, 0], sg["pts"][:, 1], "o", color=DEEP_BLUE, ms=6, zorder=4)
+    axm.plot(path[:, 0], path[:, 1], "-", color=DEEP_BLUE, lw=1, alpha=0.25)
+    (trail,) = axm.plot([], [], "-", color=ACC1, lw=2.5, zorder=5)
+    (star,) = axm.plot([], [], "*", color=ACC1, ms=19, mec=DEEP_BLUE, zorder=6)
+    axm.set_xlim(0.56, 0.90)
+    axm.set_ylim(0.08, 0.21)
+    axm.set_xticks([0.6, 0.7, 0.8, 0.9])
+    axm.set_yticks([0.10, 0.15, 0.20])
+    axm.tick_params(labelsize=12)
+    axm.set_xlabel(r"$Q/Q_{BEP}$", fontsize=13)
+    axm.set_ylabel(T("σ（トーマ数）", "σ (Thoma number)"), fontsize=13)
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    axm.legend(handles=[Line2D([], [], ls="", marker="o", color=DEEP_BLUE, ms=6, label=T("学習 16 点", "training 16")),
+                        Line2D([], [], ls="", marker="*", color=ACC1, mec=DEEP_BLUE, ms=13, label=T("予測点", "query")),
+                        Patch(color=WARM, alpha=0.45, label=T("共振帯", "resonance"))],
+               loc="lower left", bbox_to_anchor=(-0.28, 1.0), ncol=3, fontsize=12, frameon=False,
+               handletextpad=0.1, columnspacing=0.5, handlelength=1.0)
+    info = fig.text(0.02, 0.235, "", fontsize=12, va="top", linespacing=1.5)
+    # fields
+    r, th = _sg_grid()
+    re = np.linspace(0, 1, SG_NR + 1)
+    te = 2 * np.pi * (np.arange(SG_NT + 1) - 0.5) / SG_NT
+    XE, YE = re[:, None] * np.cos(te[None]), re[:, None] * np.sin(te[None])
+    vmax = 1.0
+    meshes, etxt = [], []
+    for k, (y0, ttl) in enumerate(((0.47, T("真値（実験・CFD の代役）", "truth (stands in for test/CFD)")),
+                                    (0.05, T("サロゲート（POD＋RBF）", "surrogate (POD + RBF)")))):
+        ax = fig.add_axes([0.355, y0, 0.205, 0.365])
+        ax.set_aspect("equal")
+        ax.axis("off")
+        ax.set_xlim(-1.08, 1.08)
+        ax.set_ylim(-1.08, 1.08)
+        mesh = ax.pcolormesh(XE, YE, np.zeros((SG_NR, SG_NT)), cmap=CMAP_DIV, vmin=-vmax, vmax=vmax,
+                             shading="flat", rasterized=True)
+        ax.add_patch(plt.Circle((0, 0), 1, fill=False, ec=DEEP_BLUE, lw=2.5))
+        for j, ts in enumerate(SG_SENS):
+            ax.plot(np.cos(ts), np.sin(ts), "s", ms=8, color=[ACC4, ACC1, ACC5, WARM][j], mec=DEEP_BLUE,
+                    zorder=5, clip_on=False)
+        fig.text(0.4575, y0 + 0.375, ttl, fontsize=12, ha="center")
+        meshes.append(mesh)
+        if k == 1:
+            etxt.append(fig.text(0.4575, 0.012, "", fontsize=12, ha="center"))
+    # sensor waveforms
+    ymax = max(np.abs(d["wt"]).max() for d in frames) * 1.1
+    lines = []
+    names = ["S1", "S2", "S3", "S4"]
+    cols = [ACC4, ACC1, ACC5, WARM]
+    fig.text(0.79, 0.875, T("壁面センサの圧力脈動 Cp'", "wall pressure at the sensors Cp'"), fontsize=13,
+             ha="center")
+    for j in range(4):
+        ax = fig.add_axes([0.62, 0.705 - j * 0.165, 0.36, 0.14])
+        ax.axhline(0, color=DEEP_BLUE, lw=0.6, alpha=0.3)
+        (lt,) = ax.plot(tn, frames[0]["wt"][j], "-", color=cols[j], lw=4, alpha=0.35)
+        (lr,) = ax.plot(tn, frames[0]["wr"][j], "--", color=DEEP_BLUE, lw=1.4)
+        lines.append((lt, lr))
+        ax.set_xlim(0, 8)
+        ax.set_ylim(-ymax, ymax)
+        ax.set_yticks([-1, 1])
+        ax.tick_params(axis="y", labelsize=11, length=2)
+        ax.text(-0.55, 0, names[j], fontsize=12, ha="right", va="center", color=cols[j], fontweight="bold")
+        for sp in ("top", "right") + (("bottom",) if j < 3 else ()):
+            ax.spines[sp].set_visible(False)
+        if j < 3:
+            ax.set_xticks([])
+        else:
+            ax.tick_params(labelsize=12)
+            ax.set_xlabel(T("t·n（ランナの回転数）", "t·n (runner turns)"), fontsize=12)
+    fig.text(0.60, 0.06, T("太線：真値　破線：サロゲート", "thick: truth   dashed: surrogate"), fontsize=12)
+    wtxt = fig.text(0.98, 0.06, "", fontsize=12, ha="right")
+    fig.text(0.98, 0.012, T(f"予測1点 {ms:.2f} ms（この PC で測定）", f"{ms:.2f} ms per query (this PC)"),
+             fontsize=12, ha="right")
+    fig.text(0.02, 0.012, T("合成データの簡易モデル（n_ED・Fr 固定）", "synthetic toy model (n_ED, Fr fixed)"),
+             fontsize=12)
+
+    def update(i):
+        d = frames[i]
+        trail.set_data(path[max(0, i - 12):i + 1, 0], path[max(0, i - 12):i + 1, 1])
+        star.set_data([d["q"]], [d["s"]])
+        shift = (i * SG_NT // 12) % SG_NT
+        meshes[0].set_array(np.roll(d["pt"], shift, axis=1).ravel())
+        meshes[1].set_array(np.roll(d["pr"], shift, axis=1).ravel())
+        etxt[0].set_text(T(f"場の誤差 {d['ef'] * 100:.1f} %", f"field error {d['ef'] * 100:.1f} %"))
+        wtxt.set_text(T(f"波形の誤差 {d['ew'] * 100:.1f} %", f"waveform error {d['ew'] * 100:.1f} %"))
+        for j, (lt, lr) in enumerate(lines):
+            lt.set_ydata(d["wt"][j])
+            lr.set_ydata(d["wr"][j])
+        warn = T("共振帯：線形 1D モデルは目安", "resonance band: 1D model is a guide") if d["res"] else ""
+        info.set_text(T(f"Q/Q_BEP = {d['q']:.2f}　σ = {d['s']:.3f}\nf/n = {d['fr']:.3f}（真値 {d['f']:.3f}）\n{warn}",
+                        f"Q/Q_BEP = {d['q']:.2f}  σ = {d['s']:.3f}\nf/n = {d['fr']:.3f} (truth {d['f']:.3f})\n{warn}"))
+        info.set_color("#8A5A00" if d["res"] else DEEP_BLUE)
+
+    return dict(fig=fig, update=update, frames=N, fps=fps)
+
+
 # ---------------------------------------------------------------- main
 
 def main():

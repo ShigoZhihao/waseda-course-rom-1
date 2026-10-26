@@ -22,7 +22,7 @@ POD（固有直交分解）と DMD（動的モード分解）を、円柱後流�
 | `data/cylinder_pivlike_f32.npz` | データ②：①を PIV 風に劣化させたもの（`u`, `v` に NaN、`mask`、生成条件 `meta`） |
 | `scripts/` | データとアニメーションと図を作るスクリプト |
 | `figures/static/` | notebook が出力する図 |
-| `figures/anim/` | スライド用アニメーション 12 本（GIF・MP4・最初のフレームの PNG）。`python scripts/make_animations.py` で作り直し可能（約 3 分） |
+| `figures/anim/` | スライド用アニメーション 13 本（GIF・MP4・最初のフレームの PNG）。`python scripts/make_animations.py` で作り直し可能（約 3 分） |
 | `scripts/build_deck.py` | 講義スライド `deck/rom-session1.pptx` を作るスクリプト。`--pdf` で PDF も書き出し（Windows の PowerPoint が必要） |
 
 スライドと PDF は博士論文の図を含むため、リポジトリの対象外（下の「博士論文の図について」）。
