@@ -23,6 +23,10 @@ POD（固有直交分解）と DMD（動的モード分解）を、円柱後流�
 | `scripts/` | データとアニメーションと図を作るスクリプト |
 | `figures/static/` | notebook が出力する図 |
 | `figures/anim/` | スライド用アニメーション 12 本（GIF・MP4・最初のフレームの PNG）。`python scripts/make_animations.py` で作り直せます（約 3 分） |
+| `scripts/build_deck.py` | 講義スライド `deck/rom-session1.pptx` を作るスクリプト。`--pdf` で PDF も書き出します（Windows の PowerPoint が要ります） |
+
+スライドと PDF は博士論文の図を含むため、リポジトリには入れていません（下の「博士論文の図について」）。
+作り直すには `docs/template.pptx`、前回講義のスライド、`figures/thesis/` の図が手元に要ります。
 
 変数名は教科書のコード（[dynamicslab/databook_python](https://github.com/dynamicslab/databook_python)）に合わせています：`X`, `U`, `S`, `VT`, `Atilde`, `Phi`, `lam`。
 

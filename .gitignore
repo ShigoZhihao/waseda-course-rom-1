@@ -6,6 +6,13 @@ docs/*.pdf
 # Crops of the thesis figures: not for redistribution (see figures/thesis/README.md)
 figures/thesis/*.png
 
+# The lecture deck and its PDF embed the thesis figures
+deck/*.pptx
+deck/*.pdf
+
+# Picture taken from the previous lecture deck (see figures/prev/README.md)
+figures/prev/*.jpg
+
 # Raw downloads
 data/_download/
 
