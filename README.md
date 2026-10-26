@@ -22,6 +22,7 @@ POD（固有直交分解）と DMD（動的モード分解）を、円柱後流�
 | `data/cylinder_pivlike_f32.npz` | データ②：①を PIV 風に劣化させたもの（`u`, `v` に NaN、`mask`、生成条件 `meta`） |
 | `scripts/` | データとアニメーションと図を作るスクリプト |
 | `figures/static/` | notebook が出力する図 |
+| `figures/anim/` | スライド用アニメーション 12 本（GIF・MP4・最初のフレームの PNG）。`python scripts/make_animations.py` で作り直せます（約 3 分） |
 
 変数名は教科書のコード（[dynamicslab/databook_python](https://github.com/dynamicslab/databook_python)）に合わせています：`X`, `U`, `S`, `VT`, `Atilde`, `Phi`, `lam`。
 
