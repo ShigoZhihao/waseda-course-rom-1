@@ -1741,7 +1741,7 @@ def appendix_refs(prs):
 
 
 def appendix_chapters(prs):
-    s = new_slide(prs, LY_TABLE, "付録B　教科書の章対応", "教科書のコードは1版向け。ROM の章は番号が1つずれる",
+    s = new_slide(prs, LY_TABLE, "付録B　教科書の章対応", "教科書のコードは1版向け。ROM の章は番号が1つずれた対応",
                   keep=(12,))
     ph = [p for p in s.placeholders if p.placeholder_format.idx == 12][0]
     rows = [
