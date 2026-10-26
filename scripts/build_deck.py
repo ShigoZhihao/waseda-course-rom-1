@@ -1162,7 +1162,7 @@ def s20_map(prs):
         {"t": "基底 ＝ 非線形パラメトリゼーション、力学 ＝ 縮約力学（Hesthaven, Peherstorfer, Unger 2026 の3要素）",
          "size": 18, "bullet": True},
     ], size=18)
-    cite(s, "各セルの文献")
+    cite(s, f"各セルの文献（Zhang et al. 2026 のみ 付録 {pg('apxA3')}）")
     notes(s, "これまでの話の1枚のまとめ。AE：autoencoder。LaSDI：潜在空間の力学を同定する手法の系列。\n"
              "非線形基底 × DMD と 非線形基底 × NN の欄は、本講で扱う文献がないので空欄。\n"
              "LaSDI：AE で潜在空間を作り、その中の力学を多項式の ODE として回帰での同定。"
