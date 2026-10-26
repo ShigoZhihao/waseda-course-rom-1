@@ -13,6 +13,9 @@ deck/*.pdf
 # Figures of an open-access paper; download them as figures/papers/README.md says
 figures/papers/*.png
 
+# Textbook cover: publisher's image, used on the title slide only (see figures/book/README.md)
+figures/book/*.png
+
 # Images derived for the slides only
 deck/_build/
 

@@ -39,6 +39,7 @@ ANIM = ROOT / "figures" / "anim"
 STATIC = ROOT / "figures" / "static"
 THESIS = ROOT / "figures" / "thesis"
 PAPERS = ROOT / "figures" / "papers"
+BOOK = ROOT / "figures" / "book"
 BUILD = ROOT / "deck" / "_build"       # images derived for the slides only (git-ignored)
 
 # Theme colours (spec 8.2)
@@ -451,14 +452,15 @@ def s01_title(prs):
     add_runs(p, "流れ場の低次元化と予測", 28, ACC1)
     textbox(s, L, 14.2, 25.6, 2.6, ["流体機械演習B 第4回（3回入門シリーズの1）",
                                     "劉 志豪｜シーメンス株式会社｜2026年10月27日"], size=20)
-    # Textbook "cover": title text only, no image (spec 3, slide 1)
-    box(s, 27.6, 10.6, 5.1, 6.6, [
-        {"t": "教科書（以下 B&K）", "size": 11, "color": ACC1, "bold": True, "space_after": 8},
-        {"t": "Data-Driven Science and Engineering", "size": 15, "bold": True, "space_after": 6},
-        {"t": "2nd ed.", "size": 12, "space_after": 10},
-        {"t": "S. L. Brunton & J. N. Kutz", "size": 11},
-        {"t": "Cambridge University Press, 2022", "size": 10},
-    ], line=ACC1, line_w=1.0, align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP, margin=0.4, radius_cm=0.1)
+    # Textbook cover image with its reference below it
+    ch = 6.4
+    cw_ = ch * image_size(BOOK / "bk2_cover.png")[0] / image_size(BOOK / "bk2_cover.png")[1]
+    picture(s, BOOK / "bk2_cover.png", L + CW - cw_, 10.1, h=ch)
+    textbox(s, L + CW - 6.0, 10.1 + ch + 0.05, 6.0, 1.4, [
+        {"t": "教科書（以下 B&K）", "size": 11, "color": ACC1, "bold": True, "align": PP_ALIGN.RIGHT, "space_after": 0},
+        {"t": "Brunton & Kutz, 2nd ed.", "size": 10, "align": PP_ALIGN.RIGHT, "space_after": 0},
+        {"t": "Cambridge University Press, 2022", "size": 10, "align": PP_ALIGN.RIGHT},
+    ], size=10, space_after=0, margin=0.02)
     notes(s, "表紙。教科書は1冊だけ（B&K）。上の帯は演習①で使う円柱後流（Re = 100）の渦度場。")
 
 
