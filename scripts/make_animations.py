@@ -1207,13 +1207,14 @@ def anim_19_manifold_vs_subspace():
     ax.set_xlim(-1.2, 1.2)
     ax.set_ylim(-1.2, 1.2)
     ax.set_zlim(-1.0, 1.0)
-    ax.set_box_aspect((1, 1, 0.8))
+    # Fill the frame; legend and text stay inside x = 150-810 px, the crop the slide uses.
+    ax.set_box_aspect((1, 1, 0.8), zoom=1.55)
     handles = [Line2D([], [], color=ACC4, lw=3.5, label="nonlinear manifold"),
                Line2D([], [], color=ACC5, lw=3.5, label="linear subspace (best line)"),
                Line2D([], [], color=WARM, lw=2, label="projection error")]
-    fig.legend(handles=handles, loc="upper left", bbox_to_anchor=(0.02, 0.98), fontsize=13,
+    fig.legend(handles=handles, loc="upper left", bbox_to_anchor=(0.17, 0.98), fontsize=13,
                frameon=False)
-    fig.text(0.98, 0.04, f"relative error of the line: {100 * err:.0f} %", fontsize=14,
+    fig.text(0.83, 0.04, f"relative error of the line: {100 * err:.0f} %", fontsize=14,
              ha="right", color=DEEP_BLUE)
 
     frames, fps = 84, 12

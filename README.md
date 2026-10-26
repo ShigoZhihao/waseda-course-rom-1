@@ -1,4 +1,4 @@
-# 流体機械演習B 第1回 Reduced Order Modeling：演習
+# 流体機械演習B 第4回 Reduced Order Modeling（ROM）：流れ場の低次元化と予測 — 演習
 
 POD（固有直交分解）と DMD（動的モード分解）を、円柱後流のデータで試す演習。
 
@@ -26,7 +26,7 @@ POD（固有直交分解）と DMD（動的モード分解）を、円柱後流�
 | `scripts/build_deck.py` | 講義スライド `deck/rom-session1.pptx` を作るスクリプト。`--pdf` で PDF も書き出し（Windows の PowerPoint が必要） |
 
 スライドと PDF は博士論文の図を含むため、リポジトリの対象外（下の「博士論文の図について」）。
-作り直しに必要なもの：`docs/template.pptx`、前回講義のスライド、`figures/thesis/` の図。
+作り直しに必要なもの：`docs/template.pptx`、`figures/thesis/` の図、`figures/papers/` の図（取得手順は `figures/papers/README.md`）。
 
 変数名は教科書のコード（[dynamicslab/databook_python](https://github.com/dynamicslab/databook_python)）に準拠：`X`, `U`, `S`, `VT`, `Atilde`, `Phi`, `lam`。
 
@@ -74,5 +74,5 @@ python scripts/make_pivlike.py --stride 4 --noise 0.05 --dropout 0.05 --blobs 3 
 
 ## 博士論文の図について
 
-`figures/thesis/` の図は、講師の博士論文（劉志豪, 早稲田大学, 2022）からの切り出し。**再配布なし。**
+`figures/thesis/` の図は、博士論文（劉志豪, 早稲田大学, 2022）からの切り出し。**再配布なし。**
 画像ファイルは `.gitignore` でリポジトリの対象外とし、スライドの中でだけ引用。

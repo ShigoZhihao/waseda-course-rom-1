@@ -10,8 +10,11 @@ figures/thesis/*.png
 deck/*.pptx
 deck/*.pdf
 
-# Picture taken from the previous lecture deck (see figures/prev/README.md)
-figures/prev/*.jpg
+# Figures of an open-access paper; download them as figures/papers/README.md says
+figures/papers/*.png
+
+# Images derived for the slides only
+deck/_build/
 
 # Raw downloads
 data/_download/

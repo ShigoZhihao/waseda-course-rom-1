@@ -9,7 +9,7 @@ Inputs:
     figures/anim/*.gif, *.png              animations (scripts/make_animations.py)
     figures/static/*.png                   notebook figures
     figures/thesis/T*.png                  thesis crops (scripts/extract_thesis_figs.py)
-    docs/WasedaUniversity_..._R.pptx       previous lecture; one picture is reused (figures/prev/README.md)
+    figures/papers/*.png                   figures of an open-access paper (figures/papers/README.md)
 
 Steps that PowerPoint cannot get from python-pptx are written in the speaker notes
 as lines that start with 【アニメーション】.
@@ -34,12 +34,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 TEMPLATE = ROOT / "docs" / "template.pptx"
-PREV_DECK = ROOT / "docs" / "WasedaUniversity_NumericalComputation_AI_260717_LiuZH_R.pptx"
 OUT = ROOT / "deck" / "rom-session1.pptx"
 ANIM = ROOT / "figures" / "anim"
 STATIC = ROOT / "figures" / "static"
 THESIS = ROOT / "figures" / "thesis"
-PREV = ROOT / "figures" / "prev"
+PAPERS = ROOT / "figures" / "papers"
+BUILD = ROOT / "deck" / "_build"       # images derived for the slides only (git-ignored)
 
 # Theme colours (spec 8.2)
 DEEP = RGBColor(0x00, 0x00, 0x28)
@@ -54,13 +54,14 @@ WARM = RGBColor(0xFF, 0xB0, 0x4A)
 LIGHT = RGBColor(0xF3, 0xF3, 0xF0)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 GREY = RGBColor(0x5A, 0x5F, 0x73)
+BLACK = RGBColor(0x00, 0x00, 0x00)
 EA_FONT = "Meiryo UI"
 
 # Geometry in cm (16:9, 33.867 x 19.05)
 L = 1.14             # left edge of the content
 CW = 31.6            # content width
 BODY_TOP = 3.93      # top of the body placeholders
-BODY_BOTTOM = 17.2   # lowest edge for content; the citation line is below
+BODY_BOTTOM = 17.75  # lowest edge for content; the citation line is below
 GAP = 0.3
 
 # Layout indices (spec 8.4)
@@ -75,8 +76,8 @@ DARK_SUBTLE = RGBColor(0xB8, 0xBC, 0xC8)
 
 # Slide order. Keys are the slide numbers of the spec; the value is the page number shown on the slide.
 ORDER = ["1", "chA", "2", "3", "4", "5", "chB", "6", "7", "8", "9", "10", "chC", "11", "12",
-         "chD", "13", "14", "chE", "15", "16", "17", "18", "19", "20", "chF", "21", "22",
-         "chG", "23", "24", "25a", "25a2", "25b", "chH", "26", "apxA1", "apxA2", "apxA3", "apxB"]
+         "chD", "13", "14", "14b", "chE", "15", "16", "17", "18", "19", "20", "chF", "21", "22",
+         "chG", "23", "24", "25a", "25b", "25c", "chH", "26", "apxA1", "apxA2", "apxA3", "apxB"]
 PAGE = {k: i + 1 for i, k in enumerate(ORDER)}
 
 
@@ -298,10 +299,14 @@ def claim(slide, text, y=BODY_TOP, x=L, w=CW, size=20):
     return y + h + 0.25
 
 
-def cite(slide, text):
-    """Citation line at the bottom of the slide, 12 pt."""
-    textbox(slide, 3.2, BODY_BOTTOM + 0.2, CW - 2.06, 19.05 - BODY_BOTTOM - 0.35, [text], size=12,
-            color=SUBTLE, anchor=MSO_ANCHOR.MIDDLE, space_after=0, line_spacing=1.0)
+LINKS = []   # (shape, ORDER key): citation lines that jump to an appendix page; set in build()
+
+
+def cite(slide, text, to="apxA1"):
+    """Short citation line at the bottom, 8 pt black. A click in the slide show opens the appendix page."""
+    tb = textbox(slide, 3.2, 17.95, CW - 2.06, 0.5, [f"{text}　→ 付録 p.{PAGE[to]}"], size=8,
+                 color=BLACK, anchor=MSO_ANCHOR.MIDDLE, space_after=0, line_spacing=1.0, margin=0.05)
+    LINKS.append((tb, to))
 
 
 def notes(slide, text):
@@ -395,37 +400,31 @@ def crop(src, dst, box_frac):
         im.crop((round(x0 * W), round(y0 * H), round(x1 * W), round(y1 * H))).save(dst)
 
 
-def extract_prev_picture(slide_no, shape_name_prefix, dst):
-    """Copy one picture out of the previous lecture deck (spec 5.5)."""
-    prs = Presentation(PREV_DECK)
-    s = prs.slides[slide_no - 1]
-
-    def walk(shapes):
-        for sh in shapes:
-            yield sh
-            if sh.shape_type == 6:
-                yield from walk(sh.shapes)
-
-    for sh in walk(s.shapes):
-        if sh.shape_type == 13 and sh.name.startswith(shape_name_prefix):
-            dst.write_bytes(sh.image.blob)
-            return
-    raise RuntimeError(f"no picture {shape_name_prefix} on slide {slide_no} of {PREV_DECK.name}")
-
-
 def prepare_images():
-    """Make the derived images. Thesis crops and the previous-lecture picture stay out of git."""
+    """Make the derived images. Thesis crops and the slide-only images stay out of git."""
     make_title_image(STATIC / "title_vorticity.png")
     crops = {
-        "T1b_top.png": ("T1b.png", (0.0, 0.0, 1.0, 0.395)),   # Fig. 4.14 (a)-(d): POD modes 1-4
-        "T7_left.png": ("T7.png", (0.0, 0.0, 0.5, 1.0)),      # Fig. 5.20, left column (from t1)
+        "T1b_top.png": ("T1b.png", (0.0, 0.0, 1.0, 0.395)),      # Fig. 4.14 (a)-(d): POD modes 1-4
+        "T7_t1.png": ("T7.png", (0.0, 0.0, 0.4937, 0.2015)),     # Fig. 5.20, first panel (t1, single helix)
+        "T7_rows3.png": ("T7.png", (0.0, 0.0, 0.4937, 0.6002)),  # Fig. 5.20, left column t1 to t1+2dt
     }
     for dst, (src, frac) in crops.items():
         crop(THESIS / src, THESIS / dst, frac)
-    PREV.mkdir(exist_ok=True)
-    battery = PREV / "battery_pack_3d.jpg"
-    if not battery.exists():
-        extract_prev_picture(16, "Picture 4", battery)
+    BUILD.mkdir(parents=True, exist_ok=True)
+    crop(PAPERS / "zhang2026_fig2.png", BUILD / "zhang2026_fig2_ring.png", (0.12, 0.15, 0.68, 0.66))
+    crop_gif(ANIM / "19_manifold_vs_subspace.gif", BUILD / "19_manifold_crop.gif", (150, 0, 810, 540))
+
+
+def crop_gif(src, dst, box):
+    """Crop every frame of a GIF to the pixel box (x0, y0, x1, y1); keep the frame times and the loop."""
+    with Image.open(src) as im:
+        frames, durs = [], []
+        for k in range(im.n_frames):
+            im.seek(k)
+            frames.append(im.convert("RGB").crop(box).quantize(colors=128, method=Image.Quantize.MEDIANCUT,
+                                                                dither=Image.Dither.NONE))
+            durs.append(im.info.get("duration", 80))
+    frames[0].save(dst, save_all=True, append_images=frames[1:], duration=durs, loop=0, optimize=False)
 
 
 # ---------------------------------------------------------------- the slides
@@ -447,10 +446,10 @@ def s01_title(prs):
     tf = title.text_frame
     tf.vertical_anchor = MSO_ANCHOR.TOP
     p = tf.paragraphs[0]
-    add_runs(p, "Reduced Order Modeling 入門", 40, DEEP, bold=True)
+    add_runs(p, "Reduced Order Modeling（ROM）", 40, DEEP, bold=True)
     p.add_line_break()
-    add_runs(p, "複雑な流れを少ない自由度で再現する", 28, ACC1)
-    textbox(s, L, 14.2, 25.6, 2.6, ["流体機械演習B 第1回（3回シリーズの1）",
+    add_runs(p, "流れ場の低次元化と予測", 28, ACC1)
+    textbox(s, L, 14.2, 25.6, 2.6, ["流体機械演習B 第4回（3回入門シリーズの1）",
                                     "劉 志豪｜シーメンス株式会社｜2026年10月27日"], size=20)
     # Textbook "cover": title text only, no image (spec 3, slide 1)
     box(s, 27.6, 10.6, 5.1, 6.6, [
@@ -493,34 +492,36 @@ def s02_goals(prs):
 def s03_why(prs):
     s = new_slide(prs, LY_ONE, "なぜ ROM か", "1回の解析が重すぎて、必要な回数を回せない")
     y = claim(s, "1回の高忠実度解析が重すぎて、設計で必要な回数を回せない")
-    # left: 3D CFD
-    w, h = picture(s, PREV / "battery_pack_3d.jpg", L, y, fit=(9.6, 3.9), center=True)
-    textbox(s, L - 0.3, y + 4.0, 10.6, 2.2, [
+    # left: 3D CFD (thesis, Fig. 5.20 first panel)
+    ih = 5.9
+    w, h = picture(s, THESIS / "T7_t1.png", L, y - 0.2, fit=(10.6, ih), center=True)
+    textbox(s, L - 0.3, y + ih - 0.15, 11.2, 1.5, [
         {"t": "3D CFD（高忠実度）", "bold": True, "align": PP_ALIGN.CENTER, "space_after": 0},
-        {"t": "自由度 n = 10^{7}〜10^{9}", "size": 14, "align": PP_ALIGN.CENTER, "space_after": 0},
-        {"t": "1ケース 数時間〜数日", "size": 14, "align": PP_ALIGN.CENTER},
+        {"t": "例：博論の渦ロープ解析。節点 約1000万 × 5万ステップ", "size": 13, "align": PP_ALIGN.CENTER},
     ], size=16)
+    my = y + 2.6   # middle line of the row
     # middle: ROM
-    arrow(s, 11.1, y + 2.3, 13.3, y + 2.3, width=3)
-    box(s, 13.5, y + 0.9, 6.6, 2.8, [
+    arrow(s, 12.0, my, 13.6, my, width=3)
+    box(s, 13.8, my - 1.4, 6.4, 2.8, [
         {"t": "ROM", "size": 26, "bold": True, "space_after": 0},
         {"t": "自由度 r ≪ n の近似モデル", "size": 14},
     ], fill=HEAD_FILL, line=ACC1, line_w=1.5)
-    arrow(s, 20.3, y + 2.3, 22.5, y + 2.3, width=3)
+    arrow(s, 20.4, my, 22.5, my, width=3)
     # right: 1D system model as a chain of components
     comps = ["ポンプ", "管路", "水車", "制御"]
     cx = 22.7
     for k, c in enumerate(comps):
         bx = cx + k * 2.55
-        box(s, bx, y + 1.6, 2.15, 1.4, [c], fill=None, line=ACC4, size=12, color=DEEP, radius_cm=0.15)
+        box(s, bx, my - 0.7, 2.15, 1.4, [c], fill=None, line=ACC4, size=12, color=DEEP, radius_cm=0.15)
         if k < len(comps) - 1:
-            line(s, bx + 2.15, y + 2.3, bx + 2.55, y + 2.3, color=ACC4, width=2)
-    textbox(s, 22.7, y + 3.2, 10.0, 1.5, [
+            line(s, bx + 2.15, my, bx + 2.55, my, color=ACC4, width=2)
+    textbox(s, 22.7, my + 0.9, 10.0, 1.5, [
         {"t": "1D 系統モデル", "bold": True, "align": PP_ALIGN.CENTER, "space_after": 0},
         {"t": "部品をつないだ常微分方程式。速い", "size": 14, "align": PP_ALIGN.CENTER},
     ], size=16)
     # bottom: the three situations
-    cy, ch = y + 6.4, BODY_BOTTOM - (y + 6.4)
+    cy = y + ih + 1.5
+    ch = BODY_BOTTOM - cy
     cw = (CW - 2 * GAP) / 3
     card(s, L, cy, cw, ch, "many-query：何度も回す", [
         "最適化・不確かさの定量化（UQ）で、条件を変えて同じ解析を何度も回す",
@@ -534,9 +535,10 @@ def s03_why(prs):
         "系統モデルに 3D の現象を部品として入れる",
         "例：EPFL は水力プラントの 1D モデル（SIMSEN）に、渦心振れ回りの励振源を注入した",
     ])
-    cite(s, "Benner, Gugercin, Willcox, SIAM Review 57(4):483–531, 2015｜Siemens Simcenter blog (N. Ziegler, 2023)｜"
-            "Alligné et al., 28th IAHR Symposium, 2016｜左の図：前回講義（2026-07-17）")
+    cite(s, "Benner+ 2015｜Siemens 2023｜Alligné+ 2016｜図：博論 Fig. 5.20（p.146）、数値 p.142–143")
     notes(s, "流体機械の設計では、同じ解析を何十回も回したい場面が多い。3つの場面を左から。\n"
+             "左の図は博論のドラフトチューブの CFD（ANSYS CFX、SBES）。節点 約1000万、時間刻みは振れ回り1周期の"
+             "1/1000、振れ回り50周期分＝約5万ステップ（博論 p.142–143）。等圧面で渦ロープを描いたもの。\n"
              "数値（3.92 h → 0.04 s）はベンダーの自己申告（Siemens のブログ）であることを一言添える。\n"
              "【アニメーション】下の3枚のカード：左から順に")
 
@@ -573,7 +575,7 @@ def s04_lowrank(prs):
         {"t": "ROM では、パラメトリック ROM の学習データ数が爆発する、という**限界の側**に現れる"
               "（前回講義の「代償：データを大量に使う」と同じ話）"},
     ], size=20)
-    cite(s, "B&K Ch.1｜Bellman, Dynamic Programming, Princeton UP, 1957")
+    cite(s, "B&K Ch.1｜Bellman 1957")
     notes(s, "「削減」は自由度を捨てることではなく、データが少数のパターンで書けることを使うこと。\n"
              "次元の呪いと混同しやすいので、ここで区別しておく。\n"
              "【アニメーション】右の3項目：上から順に")
@@ -597,7 +599,7 @@ def s05_quadrant(prs):
               f"GP：ガウス過程回帰。OpInf は {pg('18')}、LaSDI は {pg('20')}・{pg('22')} で説明", "size": 14, "color": GREY},
         {"t": "表は Benner et al. (2015) の分類を簡略化したもの", "size": 14, "color": GREY},
     ], size=14)
-    cite(s, "Benner, Gugercin, Willcox, SIAM Review 57(4):483–531, 2015（分類の簡略化）")
+    cite(s, "Benner+ 2015（分類を簡略化）")
     notes(s, "列＝何が変わるか、行＝線形か非線形か。例題を3つ置いた。自分の研究がどこに入るか考えてもらう。\n"
              "バッテリー熱は熱伝導がほぼ線形なので LTI が使える。PVC は渦の移流なので非線形。\n"
              "【アニメーション】表の行：主な力学 → 線形 → 非線形 の順に")
@@ -611,39 +613,41 @@ def s06_svd(prs):
         {"t": "m：スナップショット（ある時刻の場）の数", "bullet": True},
         {"t": "流体では n ≫ m。列＝スナップショット", "bullet": True},
     ], size=20)
-    textbox(s, L, y + 3.7, 15.2, 1.0, [
+    textbox(s, L, y + 3.6, 15.2, 1.0, [
         {"t": "SVD（特異値分解）：どんな行列も U・Σ・V^{T} の積に分けられる", "size": 14, "color": GREY},
     ], size=14)
-    # X = U S V^T with the shape ratio n : m = 3 : 1
-    top, u = y + 5.2, 1.45
-    xs = L + 0.4
+    # left bottom: the thesis figure, same reshaping
+    ty = y + 4.6
+    tw, th = picture(s, THESIS / "T0.png", L, ty, fit=(15.2, BODY_BOTTOM - ty))
+    textbox(s, L + tw + 0.3, ty, 15.2 - tw - 0.3, BODY_BOTTOM - ty, [
+        {"t": "博論でも同じ整形", "bold": True, "size": 16},
+        {"t": "PIV の速度場・圧力場を列に並べて X にする。多変数は縦に積む（博論 Fig. 4.1）", "size": 14},
+    ], size=14, anchor=MSO_ANCHOR.MIDDLE)
+    # right: GIF 06, then X = U S V^T with the shape ratio n : m = 3 : 1
+    gx = 17.54
+    w, h = _gif(ANIM / "06_build_X.gif", gx, y, 15.2, 8.6)
+    picture(s, ANIM / "06_build_X.gif", gx, y, w=w)
+    top, u = y + h + 0.3, 0.95
+    xs = gx + 0.4
     items = [("X", 1, 3, ACC4, "n×m"), ("=", None, None, None, None), ("U", 1, 3, ACC1, "n×m"),
              ("Σ", 1, 1, WARM, "m×m|対角"), ("V^{T}", 1, 1, ACC5, "m×m")]
     for name, cw_, ch_, col, lab in items:
         if cw_ is None:
-            textbox(s, xs, top + 1.2 * u, 1.0, 1.2, [{"t": "=", "size": 30, "align": PP_ALIGN.CENTER}],
+            textbox(s, xs, top + 1.0 * u, 0.8, 1.0, [{"t": "=", "size": 24, "align": PP_ALIGN.CENTER}],
                     anchor=MSO_ANCHOR.MIDDLE)
-            xs += 1.2
+            xs += 0.9
             continue
-        box(s, xs, top, cw_ * u, ch_ * u, [{"t": name, "size": 22, "bold": True}], fill=col, radius_cm=0.04)
-        textbox(s, xs - 0.3, top + ch_ * u + 0.05, cw_ * u + 0.6, 1.4,
-                [{"t": t, "align": PP_ALIGN.CENTER, "space_after": 0} for t in lab.split("|")], size=14)
-        xs += cw_ * u + 0.35
-    textbox(s, xs + 0.2, top, 15.2 + L - xs - 0.2, 3 * u, [
-        {"t": "模式図（n : m を 3 : 1 に縮めて描画）。実際の演習データは n = 22,500、m = 151", "size": 14,
+        box(s, xs, top, cw_ * u, ch_ * u, [{"t": name, "size": 16, "bold": True}], fill=col, radius_cm=0.04,
+            margin=0.02)
+        if cw_ * u > 0 and lab:
+            textbox(s, xs + cw_ * u + 0.05, top + (ch_ * u - 1.0 if ch_ > 1 else 0), 1.5, 1.0,
+                    [{"t": t, "space_after": 0} for t in lab.split("|")], size=11, anchor=MSO_ANCHOR.BOTTOM)
+        xs += cw_ * u + 1.45
+    textbox(s, xs - 0.2, top, L + CW - xs + 0.2, 3 * u, [
+        {"t": "模式図（n : m を 3 : 1 に縮めて描画）。演習データは n = 22,500、m = 151", "size": 13,
          "color": GREY},
-    ], size=14, anchor=MSO_ANCHOR.BOTTOM)
-    # right: GIF 06 and the thesis figure
-    gx = 17.54
-    w, h = _gif(ANIM / "06_build_X.gif", gx, y, 15.2, BODY_BOTTOM - y - 3.4)
-    picture(s, ANIM / "06_build_X.gif", gx, y, w=w)
-    ty = y + h + 0.2
-    tw, th = picture(s, THESIS / "T0.png", gx, ty, fit=(5.0, BODY_BOTTOM - ty))
-    textbox(s, gx + tw + 0.3, ty, 15.2 - tw - 0.3, BODY_BOTTOM - ty, [
-        {"t": "講師の博論でも同じ整形", "bold": True, "size": 16},
-        {"t": "PIV の速度場・圧力場を列に並べて X にする。多変数は縦に積む（劉 2022, Fig. 4.1）", "size": 14},
-    ], size=14, anchor=MSO_ANCHOR.MIDDLE)
-    cite(s, "B&K §1.1–1.2｜劉 (2022) 博士論文 Fig. 4.1")
+    ], size=13, anchor=MSO_ANCHOR.MIDDLE)
+    cite(s, "B&K §1.1–1.2｜博論 Fig. 4.1")
     notes(s, "GIF 06：渦度場が1時刻ずつ現れ、行列 X の列として積まれていく。「列＝スナップショット」を目で確認する。\n"
              "演習データ：100 × 225 格子 = 22,500 点、151 時刻。")
 
@@ -687,7 +691,7 @@ def s08_why(prs):
         prs, "なぜそうなるか", "空間側と時間側から見た、同じ相関",
         "U と V は、同じ相関構造を「空間側」と「時間側」から見たもの",
         ANIM / "08_U_from_snapshots.gif",
-        [], "Sirovich, Quart. Appl. Math. 45(3):561–571, 1987｜B&K §1.3",
+        [], "Sirovich 1987｜B&K §1.3",
         "GIF 08：スナップショットが時間係数の重みで順に足され、空間モード1が浮かび上がる（U = XVΣ⁻¹）。\n"
         "最初のフレームは足し終わった結果。\n"
         "【アニメーション】右の項目：上から順に",
@@ -752,7 +756,7 @@ def s10_truncation(prs):
     s = new_slide(prs, LY_TWO, "打ち切りと落とし穴", "何モード残すか。移動する構造に注意")
     y = claim(s, "何モード残すかは、エネルギー比・最良近似・硬閾値で決める。ただし移動する構造に注意")
     cw = (CW - 2 * GAP) / 3
-    gw = 10.0
+    gw = cw
     gh = gw * 9 / 16
     cols = [
         ("10a_rank_r_recon.gif", "① 打ち切り：何モード残すか", [
@@ -773,10 +777,11 @@ def s10_truncation(prs):
     ]
     for k, (gif, head, body) in enumerate(cols):
         x = L + k * (cw + GAP)
-        picture(s, ANIM / gif, x + (cw - gw) / 2, y, w=gw)
-        card(s, x, y + gh + 0.2, cw, BODY_BOTTOM - (y + gh + 0.2), head,
+        picture(s, ANIM / gif, x + (cw - gw) / 2, y - 0.1, w=gw)
+        cy = y + gh + 0.35
+        card(s, x, cy, cw, BODY_BOTTOM - cy, head,
              [{"t": b, "bullet": True, "space_after": 3} for b in body], size=14)
-    cite(s, "B&K §1.7（打ち切り、平行移動への弱さ）、§12.5（ガウス分布の平行移動）｜劉 (2022) 博士論文 Fig. 5.20")
+    cite(s, "B&K §1.7, §12.5｜博論 Fig. 5.20")
     notes(s, "3本の GIF は同時に動く。左から順に指しながら説明する。\n"
              "① 10a：r を増やすほど誤差が下がる。SVD の打ち切りが rank-r の最良近似（Eckart–Young）。\n"
              "② 10b：回るだけの模様は、固定の形2つを cos と sin で混ぜれば書ける。だから σ が2本ずつ並ぶ。"
@@ -801,7 +806,7 @@ def s11_dmd1(prs):
          {"t": "Ã の固有値 λ_{i} → 角周波数 arg(λ_{i})/Δt、成長率 ln|λ_{i}|/Δt", "bullet": True},
          {"t": "DMD モード Φ = X′VΣ^{−1}W（exact DMD、W は Ã の固有ベクトル）", "bullet": True},
          {"t": "これ自体が線形のデータ駆動 ROM：x_{k} ≈ Σ_{i} φ_{i} b_{i} λ_{i}^{k}", "bullet": True}],
-        "Schmid, JFM 656:5–28, 2010｜Tu et al., J. Comput. Dyn. 1(2):391–421, 2014｜B&K §7.2",
+        "Schmid 2010｜Tu+ 2014｜B&K §7.2",
         "GIF 11：左が真の渦度場、右が DMD モードの重ね合わせで進めた場。下の固有値は単位円の上に並ぶ（周期的な流れ）。\n"
         "最初のフレームから固有値プロットが見えている。",
         gif_w=18.4, size=18)
@@ -821,22 +826,21 @@ def s12_dmd2(prs):
     ], size=13)
     rx = L + gw + 0.5
     rw = L + CW - rx
-    w, h = picture(s, STATIC / "nb09_pod_fft_vs_dmd.png", rx, y, w=rw - 2.0)
-    ty = y + h + 0.05
-    textbox(s, rx, ty, rw, 1.4, [
-        {"t": "演習①：きれいな円柱では POD 係数もほぼ1周波数。DMD は固有値として離散的に出る", "size": 14, "space_after": 0},
-        {"t": "周波数が多数ある流れでは、位相平均より POD・DMD のモード分解が妥当（博論 p.119）", "size": 13, "color": GREY},
-    ], size=14)
-    ty += 1.45
-    avail = BODY_BOTTOM - ty - 0.85
-    w1, _ = picture(s, THESIS / "T1b_top.png", rx, ty, h=avail)
-    w2, _ = picture(s, THESIS / "T2b.png", rx + w1 + 0.3, ty, h=avail)
-    textbox(s, rx, ty + avail + 0.02, rw, 0.85, [
-        {"t": "博論の実測：POD 係数に f_{PVC} と f_{2ndPVC} が混在（Fig. 4.14）／DMD（Fig. 4.16）",
+    th = 6.7
+    w1, _ = picture(s, THESIS / "T1b_top.png", rx, y, h=th)
+    picture(s, THESIS / "T2b.png", rx + w1 + 0.3, y, h=th)
+    textbox(s, rx, y + th + 0.02, rw, 0.6, [
+        {"t": "博論の実測：POD 係数に f_{PVC} と f_{2ndPVC} が混在（Fig. 4.14）／DMD は周波数ごと（Fig. 4.16）",
          "size": 12, "color": GREY},
     ], size=12)
-    cite(s, "Schmid, Annu. Rev. Fluid Mech. 54, 2022｜Kutz et al., DMD, SIAM, 2016｜"
-            "Dawson et al., Exp. Fluids 57:42, 2016｜劉 (2022) 博論 §4.2.2, Fig. 4.14, 4.16")
+    ny = y + th + 0.75
+    w, h = picture(s, STATIC / "nb09_pod_fft_vs_dmd.png", rx, ny, h=BODY_BOTTOM - ny)
+    textbox(s, rx + w + 0.3, ny, rw - w - 0.3, BODY_BOTTOM - ny, [
+        {"t": "演習①：きれいな円柱では POD 係数もほぼ1周波数。DMD は固有値として離散的に出る", "size": 14},
+        {"t": "周波数が多数ある流れでは、位相平均より POD・DMD のモード分解が妥当（博論 p.119）", "size": 13,
+         "color": GREY},
+    ], size=14, anchor=MSO_ANCHOR.MIDDLE)
+    cite(s, "Schmid 2022｜Kutz+ 2016｜Dawson+ 2016｜博論 §4.2.2, Fig. 4.14, 4.16", to="apxA2")
     notes(s, "GIF 12：円柱データにノイズを 0 → 揺らぎ RMS の 200% まで足していく。r = 7（エネルギー 99%）。"
              "固有値が単位円の内側（減衰側）に流れる。右のパネルは |λ| の拡大。\n"
              "fbDMD：前向きと後ろ向きの DMD を組み合わせる。tlsDMD：全最小二乗で解く。どちらもノイズの偏りを減らす。\n"
@@ -846,32 +850,28 @@ def s12_dmd2(prs):
 def s13_ex1(prs):
     s = new_slide(prs, LY_TWO, "演習①", "円柱後流（解析結果の処理）")
     y = claim(s, "理想データで「手法が正しい」ことを確かめる")
-    textbox(s, L, y, 15.2, BODY_BOTTOM - y, [
-        {"t": "手順（Colab）", "bold": True, "color": ACC1},
-        "1. clone：リポジトリを取ってくる",
-        "2. load：渦度場を読み、X を作る",
-        "3. SVD：U・Σ・V を求める",
-        "4. モードを見る：空間モードと時間係数",
-        {"t": "5. DMD：固有値と周波数", "space_after": 14},
-        {"t": "見るべきもの", "bold": True, "color": ACC1},
-        {"t": "σ の急な減衰", "bullet": True},
-        {"t": "モード対（σ_{1} ≈ σ_{2}）と a_{1}–a_{2} の円", "bullet": True},
-        {"t": "DMD の周波数 ＝ ストローハル数 St", "bullet": True},
-        {"t": "github.com/ShigoZhihao/waseda-course-rom-1（README から Colab で開く）", "size": 13,
-         "color": GREY, "space_before": 10},
-    ], size=20, space_after=2)
-    gx, cw2 = 17.54, 7.45
-    figs = [("nb04_sigma_energy.png", "σ の減衰と累積エネルギー"), ("nb05_coeffs_phase.png", "時間係数と位相平面"),
-            ("nb08_dmd.png", "DMD 固有値と周波数"), ("nb05_modes.png", "空間モード 1〜4")]
-    yy = [y, y]
+    textbox(s, L, y, 21.5, 0.9, [
+        {"t": "**手順（Colab）**：① clone → ② load（X を作る）→ ③ SVD → ④ モード → ⑤ DMD", "size": 16},
+    ], size=16, anchor=MSO_ANCHOR.MIDDLE)
+    textbox(s, L + 21.5, y, CW - 21.5, 0.9, [
+        {"t": "github.com/ShigoZhihao/waseda-course-rom-1", "size": 12, "color": GREY, "align": PP_ALIGN.RIGHT},
+    ], size=12, anchor=MSO_ANCHOR.MIDDLE)
+    gy = y + 1.1
+    cap_h = 0.8
+    figs = [("nb04_sigma_energy.png", "見る：σ の急な減衰"), ("nb05_coeffs_phase.png", "見る：モード対（σ_{1} ≈ σ_{2}）と a_{1}–a_{2} の円"),
+            ("nb08_dmd.png", "見る：DMD の周波数 ＝ St"), ("nb05_modes.png", "空間モード 1〜4（2つずつ対）")]
+    asp = [image_size(STATIC / f)[0] / image_size(STATIC / f)[1] for f, _ in figs]
+    tall = max(1 / asp[0] + 1 / asp[2], 1 / asp[1] + 1 / asp[3])
+    cw2 = min((CW - 0.6) / 2, (BODY_BOTTOM - gy - 2 * cap_h - 0.2) / tall)
+    gx = L + (CW - 2 * cw2 - 0.6) / 2
+    yy = [gy, gy]
     for k, (f, cap) in enumerate(figs):
         col = k % 2
-        x = gx + col * (cw2 + 0.3)
+        x = gx + col * (cw2 + 0.6)
         w, h = picture(s, STATIC / f, x, yy[col], w=cw2)
-        textbox(s, x, yy[col] + h, cw2, 0.7, [{"t": cap, "size": 13, "color": GREY}], size=13)
-        yy[col] += h + 0.9
-    cite(s, "データ：Kutz, Brunton, Brunton, Proctor, Dynamic Mode Decomposition, SIAM, 2016"
-            "（円柱後流 Re = 100、dmdbook.com）｜B&K §1, §7.2")
+        textbox(s, x, yy[col] + h, cw2, cap_h, [{"t": cap, "size": 14}], size=14)
+        yy[col] += h + cap_h + 0.2
+    cite(s, "データ：Kutz+ 2016（円柱後流 Re = 100、dmdbook.com）｜B&K §1, §7.2")
     notes(s, "ここで Colab を開いて、セル0から順に実行する（約2分）。▶ のセルはスライドのアニメーションなので飛ばしてよい。\n"
              "ストローハル数 St = fD/U：渦の放出周波数を無次元にしたもの。")
 
@@ -879,41 +879,52 @@ def s13_ex1(prs):
 def s14_ex2(prs):
     s = new_slide(prs, LY_TWO, "演習②", "PIV 風に汚したデータで、何が壊れるか")
     y = claim(s, "同じ関数を「実験のように汚したデータ」に当てる。真値があるので、壊れ方を測れる")
-    gw = 13.4
+    gw = 20.4
     picture(s, ANIM / "14b_gappy_fill.gif", L, y, w=gw)
-    gy = y + gw * 9 / 16 + 0.2
-    card(s, L, gy, 15.2, BODY_BOTTOM - gy, "4つの劣化 → 何が起きるか", [
-        {"t": "間引き（元の格子で4点に1点）・ノイズ（揺らぎ RMS の 5%）・欠損（5% ＋ 楕円3個）・円柱マスク",
-         "space_after": 4},
-        {"t": "→ 欠損の埋め方で σ が変わる／ノイズで弱い DMD モードの固有値が内側へ／σ の減衰が緩くなり、"
-              "何モード残すかが自明でなくなる"},
-    ], size=14)
-    rx, rw = 17.54, 15.2
-    textbox(s, rx, y - 0.1, rw, 0.8, [{"t": "本物の実験ではこうなる（講師の博論、PIV）", "bold": True,
-                                      "size": 16, "color": ACC1}], size=16)
-    ty = y + 0.75
-    w1, h1 = picture(s, THESIS / "T1a.png", rx, ty, w=7.6)
-    w2, h2 = picture(s, THESIS / "T1b_top.png", rx + 7.8, ty, fit=(rw - 7.8, h1))
-    cy = ty + h1 + 0.02
-    textbox(s, rx, cy, 7.6, 1.0, [{"t": "σ（TKE）の減衰。TKE ≥ 1% を支配的と定義（Fig. 4.12）", "size": 12,
-                                   "color": GREY}], size=12)
-    textbox(s, rx + 7.8, cy, rw - 7.8, 1.0, [{"t": "モード1〜4：隣り合うモードが対（Fig. 4.14）", "size": 12,
-                                             "color": GREY}], size=12)
-    py = cy + 1.05
-    ph = BODY_BOTTOM - py - 0.75
-    pw, _ = picture(s, ANIM / "14a_pvc_orbit.png", rx, py, h=ph)
-    textbox(s, rx + pw + 0.3, py, rw - pw - 0.3, ph, [
-        {"t": "合成データ：振れ回り渦と壁面の圧力（GIF 14a）", "size": 14, "bold": True},
-        {"t": "軌道半径 r^{*} = 0.13 は博論 Fig. 3.12 から読んだ値", "size": 13},
-    ], size=13, anchor=MSO_ANCHOR.MIDDLE)
-    textbox(s, rx, BODY_BOTTOM - 0.75, rw, 0.75, [
-        {"t": "実験条件：PIV 1500 Hz・16377 ペア、壁面圧力 25 kHz で同期計測（博論 p.42、Fig. 3.9）", "size": 12,
-         "color": GREY}], size=12, anchor=MSO_ANCHOR.MIDDLE)
-    cite(s, "Everson & Sirovich, JOSA A 12(8):1657–1664, 1995｜Dawson et al., Exp. Fluids 57:42, 2016｜"
-            "劉 (2022) 博士論文 Fig. 3.9, 3.12, 4.12, 4.14")
+    rx = L + gw + 0.4
+    rw = L + CW - rx
+    ch = (BODY_BOTTOM - y - GAP) / 2
+    card(s, rx, y, rw, ch, "4つの劣化", [
+        {"t": t, "bullet": True, "space_after": 3} for t in [
+            "間引き：元の格子で4点に1点", "ノイズ：揺らぎ RMS の 5%", "欠損：5% の点 ＋ 楕円3個", "円柱の内側をマスク"]
+    ], size=15)
+    card(s, rx, y + ch + GAP, rw, ch, "何が起きるか", [
+        {"t": t, "bullet": True, "space_after": 3} for t in [
+            "欠損の埋め方で σ が変わる", "ノイズで弱い DMD モードの固有値が内側へ",
+            "σ の減衰が緩くなり、何モード残すかが自明でなくなる"]
+    ], size=15)
+    cite(s, "Everson & Sirovich 1995｜Dawson+ 2016", to="apxA1")
     notes(s, "GIF 14b：欠損だらけの場が Gappy POD の反復で1回ずつ埋まり、真値との誤差が下がる。\n"
-             "講師の一言：「演習②で体験した壊れ方は、博論のデータ処理でも起きた。ランクは 95% 基準ではなく試行錯誤で決めた」。\n"
-             "TKE：乱れの運動エネルギー。14a の動く版は figures/anim/14a_pvc_orbit.gif。")
+             "左上の黒い輪郭が欠損。右の2本のグラフは σ の並び（真値との比較）と、欠損部の誤差の下がり方。")
+
+
+def s14b_thesis(prs):
+    s = new_slide(prs, LY_TWO, "実験データでは", "博論の PIV 計測で起きたこと")
+    y = claim(s, "本物の PIV 計測でも、σ（TKE）の減衰とモード対を見て、残すモードを決める")
+    th = 9.4
+    w1 = th * image_size(THESIS / "T1a.png")[0] / image_size(THESIS / "T1a.png")[1]
+    w2 = th * image_size(THESIS / "T1b_top.png")[0] / image_size(THESIS / "T1b_top.png")[1]
+    x0 = L + (CW - w1 - w2 - 0.4) / 2
+    picture(s, THESIS / "T1a.png", x0, y, h=th)
+    picture(s, THESIS / "T1b_top.png", x0 + w1 + 0.4, y, h=th)
+    cy = y + th + 0.05
+    textbox(s, x0, cy, w1, 0.8, [{"t": "σ（TKE）の減衰。TKE ≥ 1% を支配的と定義（Fig. 4.12）", "size": 13,
+                                  "color": GREY}], size=13)
+    textbox(s, x0 + w1 + 0.4, cy, w2, 0.8, [{"t": "モード1〜4：隣り合うモードが対。時間係数に複数の周波数（Fig. 4.14）",
+                                             "size": 13, "color": GREY}], size=13)
+    by = cy + 0.85
+    bh = BODY_BOTTOM - by
+    textbox(s, L, by, CW, bh, [
+        {"t": "演習の合成データ（振れ回り渦と壁面の圧力）は、軌道半径 r^{*} = 0.13 を博論 Fig. 3.12 から読んで作った",
+         "size": 14},
+        {"t": "実験条件：PIV 1500 Hz・16377 ペア、壁面圧力 25 kHz で同期計測（博論 p.42、Fig. 3.9）", "size": 13,
+         "color": GREY},
+    ], size=14, anchor=MSO_ANCHOR.MIDDLE)
+    cite(s, "博論 Fig. 3.9, 3.12, 4.12, 4.14, p.42, p.93", to="apxA3")
+    notes(s, "演習②で体験した壊れ方は、博論のデータ処理でも起きた。ランクは 95% 基準ではなく試行錯誤で決めた（博論 p.93）。\n"
+             "TKE：乱れの運動エネルギー。左の図で、TKE が 1% 以上のモードを支配的とした。\n"
+             "右の図：隣り合うモードが対になる（モード1・2、3・4）。時間係数のスペクトルには複数のピークがある。\n"
+             "14a の動く版は figures/anim/14a_pvc_orbit.gif。")
 
 
 def s15_basis_dynamics(prs):
@@ -940,7 +951,7 @@ def s15_basis_dynamics(prs):
         textbox(s, L + pw + k * (pw + gap), y + 0.2, gap, 1.6, [{"t": sym, "size": 32, "bold": True,
                                                                  "align": PP_ALIGN.CENTER}],
                 color=ACC1, anchor=MSO_ANCHOR.MIDDLE)
-    cite(s, "Hesthaven, Peherstorfer, Unger, Acta Numerica, 2026, DOI 10.1017/s0962492926100294")
+    cite(s, "Hesthaven, Peherstorfer, Unger 2026")
     notes(s, "ROM は「どの座標で表すか（基底）」と「その座標でどう進めるか（力学）」の2つを選ぶこと。\n"
              "intrusive：ソルバの方程式・コードに手を入れる。autoencoder：入力を小さな潜在変数に圧縮して元に戻すよう学習する NN。\n"
              "【アニメーション】基底 → 力学 → ROM の順に")
@@ -989,7 +1000,7 @@ def s16_galerkin(prs):
         {"t": "非線形項 f(U_{r} a) は元の n 次元で評価する → DEIM の原論文の指摘："
               "POD は変数の数を減らすが、非線形項の評価コストは元の問題のまま", "bullet": True},
     ], size=20)
-    cite(s, "B&K Ch.12｜Chaturantabut & Sorensen, SIAM J. Sci. Comput. 32(5):2737–2764, 2010")
+    cite(s, "B&K Ch.12｜Chaturantabut & Sorensen 2010")
     notes(s, "式の形を行列の大きさで見せる。U_r^T f(U_r a) の f の中は n 次元。ここが遅いままになる。\n"
              "次のスライドの DEIM が、この f を少数の点だけで評価する方法。\n"
              "【アニメーション】下の3項目：上から順に")
@@ -1006,8 +1017,7 @@ def s17_hyper(prs):
          {"t": "**DEIM**（Chaturantabut & Sorensen 2010）：非線形項のスナップショットに POD をかけ、"
                "**貪欲法**で補間点を1点ずつ選ぶ（残差が最大の点を次に選ぶ）", "bullet": True, "space_after": 8},
          {"t": "**QDEIM**：ピボット付き QR 分解で点を選ぶ（B&K §13.5–13.6）", "bullet": True}],
-        "B&K Ch.13｜Everson & Sirovich, JOSA A 12(8):1657–1664, 1995｜"
-        "Chaturantabut & Sorensen, SIAM J. Sci. Comput. 32(5):2737–2764, 2010",
+        "B&K Ch.13｜Everson & Sirovich 1995｜Chaturantabut & Sorensen 2010",
         "GIF 17：残差が最大の点を1つ選び、その点で合わせた後の残差でまた最大の点を選ぶ。点が後流に広がっていく。"
         "右は、選んだ点の数 j で非線形項を補間したときの誤差。\n"
         "貪欲法：その時点で一番よい選択を1つずつ積み重ねる方法。",
@@ -1033,8 +1043,7 @@ def s18_intrusive(prs):
         textbox(s, x, y + 1.8, 15.2, bh - 0.1, [{"t": t, "bullet": True, "space_after": 6} for t in items], size=17)
     box(s, L, BODY_BOTTOM - 1.15, CW, 1.1, [{"t": "これが「実際にやる時に、最初に決めること」", "size": 20,
                                              "bold": True, "color": DEEP}], fill=WARM)
-    cite(s, "Peherstorfer & Willcox, CMAME 306:196–215, 2016｜Kramer, Peherstorfer, Willcox, "
-            "Annu. Rev. Fluid Mech. 56:521–548, 2024")
+    cite(s, "Peherstorfer & Willcox 2016｜Kramer+ 2024")
     notes(s, "自分のソルバのソースに触れるかどうかで、選べる手法が半分に分かれる。STAR-CCM+ などの商用ソルバは触れない。\n"
              "Operator Inference：縮約した方程式が「一次項＋二次項」のような形だと仮定して、その係数だけをデータから求める。\n"
              "LSTM：時系列を扱う NN。neural ODE：微分方程式の右辺を NN で表すもの。\n"
@@ -1042,20 +1051,17 @@ def s18_intrusive(prs):
 
 
 def s19_manifold(prs):
-    s, y, w, h = one_gif_slide(
-        prs, "線形部分空間の限界", "非線形多様体と、Deep Learning の存在意義",
-        "移流が支配的な問題では、線形基底が本質的に効かない（Kolmogorov barrier）。そこで非線形の基底＝autoencoder",
-        ANIM / "19_manifold_vs_subspace.gif", [],
-        "Peherstorfer, Notices AMS 69(5):725–, 2022｜Lee & Carlberg, JCP 404:108973, 2020｜"
-        "Rowley & Dawson, Annu. Rev. Fluid Mech. 49:387–417, 2017｜B&K §13.7, Ch.9｜劉 (2022) 博士論文 Fig. 5.20",
-        "GIF 19：曲がった解の集まり（曲線）を、直線（線形部分空間）で近似しようとしても届かない。視点がゆっくり回る。\n"
-        "LSPG：最小二乗 Petrov–Galerkin 射影。Balanced POD は入出力を残す制御向けの ROM で、今日は名前だけ。\n"
-        "右の博論図：同じ運転条件でも渦ロープが単螺旋と二重螺旋を行き来する。両方を1つの線形基底で表すとモードが倍以上要る。",
-        gif_w=16.8)
+    s = new_slide(prs, LY_ONE, "線形部分空間の限界", "非線形多様体と、Deep Learning の存在意義")
+    y = claim(s, "移流が支配的だと線形基底が効かない（Kolmogorov barrier）→ 非線形の基底（autoencoder）")
+    gif = BUILD / "19_manifold_crop.gif"
+    gh = BODY_BOTTOM - y - 0.4
+    w, _ = picture(s, gif, L, y, h=gh)
+    th = BODY_BOTTOM - y - 1.0
+    tw = th * image_size(THESIS / "T7_rows3.png")[0] / image_size(THESIS / "T7_rows3.png")[1]
+    picture(s, THESIS / "T7_rows3.png", L + CW - tw, y, h=th)
+    textbox(s, L + CW - tw - 0.6, y + th + 0.05, tw + 0.6, 0.9, [
+        {"t": "単螺旋 → 二重螺旋（Fig. 5.20）", "size": 11, "color": GREY, "align": PP_ALIGN.CENTER}], size=11)
     x = L + w + 0.4
-    tw, th = picture(s, THESIS / "T7_left.png", L + CW - 3.6, y, h=BODY_BOTTOM - y - 1.4)
-    textbox(s, L + CW - 4.4, y + th + 0.05, 4.4, 1.35, [
-        {"t": "単螺旋⇄二重螺旋（博論 Fig. 5.20）", "size": 12, "color": GREY, "align": PP_ALIGN.CENTER}], size=12)
     side_text(s, x, y, [
         {"t": "**Kolmogorov n-width**：最良の r 次元線形部分空間でも、誤差が遅くしか減らない問題がある",
          "bullet": True, "space_after": 8},
@@ -1063,7 +1069,13 @@ def s19_manifold(prs):
          "bullet": True, "space_after": 8},
         {"t": "B&K §13.7 Decoder networks", "bullet": True, "space_after": 8},
         {"t": "Balanced POD（B&K Ch.9）：入出力（制御）が目的の ROM。今日は存在だけ", "bullet": True},
-    ], size=17, w=L + CW - 4.0 - x)
+    ], size=16, w=L + CW - tw - 0.4 - x)
+    cite(s, "Peherstorfer 2022｜Lee & Carlberg 2020｜Rowley & Dawson 2017｜B&K §13.7, Ch.9｜博論 Fig. 5.20")
+    notes(s,
+        "GIF 19：曲がった解の集まり（曲線）を、直線（線形部分空間）で近似しようとしても届かない。視点がゆっくり回る。\n"
+        "LSPG：最小二乗 Petrov–Galerkin 射影。Balanced POD は入出力を残す制御向けの ROM で、今日は名前だけ。\n"
+        "右の博論図：同じ運転条件でも渦ロープが単螺旋と二重螺旋を行き来する（図は t₁ から 2Δt まで。"
+        "このあと二重螺旋から単螺旋に戻る）。両方を1つの線形基底で表すとモードが倍以上要る。")
 
 
 def s20_map(prs):
@@ -1086,7 +1098,7 @@ def s20_map(prs):
         {"t": "基底 ＝ 非線形パラメトリゼーション、力学 ＝ 縮約力学（Hesthaven, Peherstorfer, Unger 2026 の3要素）",
          "size": 18, "bullet": True},
     ], size=18)
-    cite(s, "各セルの文献の詳細は付録A")
+    cite(s, "各セルの文献")
     notes(s, "これまでの話を1枚にまとめる。AE：autoencoder。LaSDI：潜在空間の力学を同定する手法の系列。\n"
              "非線形基底 × DMD と 非線形基底 × NN の欄は、本講で扱う文献がないので空欄。\n"
              "LaSDI：AE で潜在空間を作り、その中の力学を多項式の ODE として回帰で同定する。"
@@ -1143,7 +1155,7 @@ def s21_timeline(prs):
             [{"t": "横軸は等間隔（年の長さに比例しない）", "size": 13, "color": GREY,
               "align": PP_ALIGN.RIGHT}],
             size=13, anchor=MSO_ANCHOR.MIDDLE)
-    cite(s, "Pearson 1901、Lumley 1967 は定説として扱う｜その他の文献は付録A")
+    cite(s, "Pearson 1901・Lumley 1967 は定説として扱う")
     notes(s, "左から右へ、数学 → 流体 → 力学 → 非侵入 → 非線形。色が分野。\n"
              "【アニメーション】年表の項目：左から順に1つずつ（1901 → 2026）")
 
@@ -1181,8 +1193,7 @@ def s22_frontier(prs):
         {"t": "サーベイの系譜：Benner et al. 2015 → Hesthaven, Pagliantini, Rozza 2022 → "
               "Hesthaven, Peherstorfer, Unger 2026（後の2本は Acta Numerica）", "size": 13}], size=13,
             anchor=MSO_ANCHOR.MIDDLE)
-    cite(s, "Barnett & Farhat, JCP 464:111348, 2022｜Geelen et al., CMAME 403:115717, 2023｜"
-            "Barnett et al., JCP 492:112420, 2023｜Bonneville et al., arXiv 2403.10748, 2024｜RONOM, arXiv 2507.12814")
+    cite(s, "Barnett & Farhat 2022｜Geelen+ 2023｜Barnett+ 2023｜Bonneville+ 2024｜RONOM", to="apxA2")
     notes(s, "各方向について「何が嬉しいか」（緑の太字）を中心に話す。\n"
              "neural operator：関数から関数への写像を学習する NN。格子の細かさに依らずに使える。UQ：不確かさの定量化。\n"
              "【アニメーション】3方向：左から順に")
@@ -1210,103 +1221,89 @@ def s23_workflow(prs):
         textbox(s, L + 5.8, yy, 18.4, rh - 0.35, [{"t": f"「{q}」"}], size=20, anchor=MSO_ANCHOR.MIDDLE)
     card(s, 26.0, y, L + CW - 26.0, 5.0, "使い方", [
         f"思考実験（{pg('24')}）で、この6項目を埋める",
-        f"答え合わせ（{pg('25a')}–{PAGE['25b']}）も同じ6項目の表で行う",
+        f"答え合わせ（{pg('25a')}）も同じ6項目の表。{pg('25b')}–{PAGE['25c']} は (A) の深掘り",
     ], size=15)
     notes(s, "ROM を作り始める前に、6つの問いに上から答える。手法は4番目。最初に手法を決めない。\n"
              "【アニメーション】6ステップ：上から順に")
 
 
 def s24_task(prs):
-    s = new_slide(prs, LY_FOUR, "思考実験：課題", "4種のデータから、ROM の設計書を書く")
-    y = claim(s, f"4種のデータから出発して、ROM の設計書（{pg('23')} の6項目）を書く")
+    s = new_slide(prs, LY_FOUR, "思考実験：課題", "2つの例題から1つ選び、ROM の設計書を書く")
+    y = claim(s, f"データ（①〜④）から出発して、例題 (A) か (B) の ROM 設計書（{pg('23')} の6項目）を書く")
     qw = 15.2
-    qh = (BODY_BOTTOM - y - GAP) / 2
-    card(s, L, y, qw, qh, "データ：どれから出発するか", [
-        "① 壁面圧力脈動（数点のセンサ。振動騒音の対象）",
-        "② PIV（2D 断面、時間分解）",
-        "③ CFD の 2D 断面",
-        "④ 3D の結果そのまま",
-    ], size=15)
-    card(s, L, y + qh + GAP, qw, qh, "例題：何を作るか", [
-        "(A) ドラフトチューブ下流の渦心振れ回り脈動を、1D 水撃モデルに注入",
-        "(B) バッテリーパック熱の 3D → 1D 連成",
-        "(C) 渦励振（VIV）",
-        "(D) キャビテーションサージ／旋回失速",
-    ], size=15)
+    rh = 0.9
+    rows = [["データ ＼ 例題", "(A) 渦の脈動", "(B) 電池の熱"]] + [[d, "", ""] for d in
+            ["① 壁面圧力（数点のセンサ）", "② PIV（2D 断面、時間分解）", "③ CFD の 2D 断面", "④ 3D の結果そのまま"]]
+    table(s, L, y, [7.0, 4.1, 4.1], rows, size=14, row_h=rh)
+    ey = y + 5 * rh + 0.4
+    card(s, L, ey, qw, BODY_BOTTOM - ey, "例題：何を作るか", [
+        {"t": "(A) 水力発電所：渦の脈動を系統モデルに入れる", "bold": True, "space_after": 2},
+        {"t": "水車の出口の管（ドラフトチューブ）で渦が振れ回り、壁の圧力が脈動する。"
+              "この脈動を「揺れの源」として、発電所全体の 1D 水撃モデルに入れる", "size": 14, "space_after": 2},
+        {"t": f"1D 水撃モデル：管の中を圧力波が伝わる様子を、管の長さ方向だけで解くモデル（{pg('3')} 右の 1D 系統モデルの一種）",
+         "size": 13, "color": GREY, "space_after": 10},
+        {"t": "(B) バッテリーパックの熱：3D 解析を 1D の部品にする", "bold": True, "space_after": 2},
+        {"t": f"急速充電中のセル温度を、系統モデルの中で速く計算する（{pg('3')} の real-time の例）", "size": 14},
+    ], size=14)
     rx = 17.54
-    textbox(s, rx, y, qw, 0.8, [{"t": "グループで1組選び、10分で6項目を埋める → 2組が発表", "bold": True, "color": ACC1}],
-            size=18)
-    rows = [["データ ＼ 例題", "(A)", "(B)", "(C)", "(D)"]] + [[d, "", "", "", ""] for d in
-                                                              ["① 壁面圧力", "② PIV", "③ CFD 2D", "④ 3D"]]
-    table(s, rx, y + 0.9, [4.4, 2.7, 2.7, 2.7, 2.7], rows, size=14, row_h=0.72)
-    fy = y + qh + GAP
-    fh = BODY_BOTTOM - fy - 0.75
-    w1, _ = picture(s, THESIS / "T6.png", rx, fy, h=fh)
-    w2, _ = picture(s, THESIS / "T5b.png", rx + w1 + 0.2, fy, fit=(5.0, fh))
-    rem = qw - w1 - w2 - 0.4
-    iw, ih = image_size(THESIS / "T5a_2.png")
-    h3 = min(fh, rem * ih / iw)
-    picture(s, THESIS / "T5a_2.png", rx + w1 + w2 + 0.4, fy + (fh - h3) / 2, fit=(rem, h3))
-    textbox(s, rx, BODY_BOTTOM - 0.75, qw, 0.75, [
-        {"t": "(A) の題材：振れ回る渦糸（Fig. 3.1）、PIV 配置（Fig. 3.8）、圧力センサ配置（Fig. 3.3）",
+    textbox(s, rx, y, qw, 0.8, [{"t": "(A) か (B) を選び、10分で6項目を埋める → 2組が発表", "bold": True,
+                                 "color": ACC1}], size=15)
+    # T6 and T5b share one row; T5a_2 spans the row below. Scale both rows to fit the column.
+    fy = y + 1.0
+    fh = BODY_BOTTOM - fy - 0.7
+    a6, a5b, a5a = (image_size(THESIS / f)[0] / image_size(THESIS / f)[1] for f in ("T6.png", "T5b.png", "T5a_2.png"))
+    h1 = (qw - 0.3) / (a6 + a5b)
+    h2 = qw / a5a
+    k = min(1.0, (fh - 0.2) / (h1 + h2))
+    h1, h2 = h1 * k, h2 * k
+    x0 = rx + (qw - (h1 * (a6 + a5b) + 0.3)) / 2
+    w1, _ = picture(s, THESIS / "T6.png", x0, fy, h=h1)
+    picture(s, THESIS / "T5b.png", x0 + w1 + 0.3, fy, h=h1)
+    picture(s, THESIS / "T5a_2.png", rx + (qw - h2 * a5a) / 2, fy + h1 + 0.2, h=h2)
+    textbox(s, rx, BODY_BOTTOM - 0.65, qw, 0.65, [
+        {"t": "(A) の題材：渦糸（Fig. 3.1）・PIV 配置（Fig. 3.8）・圧力センサ（Fig. 3.3）",
          "size": 12, "color": GREY}], size=12, anchor=MSO_ANCHOR.MIDDLE)
-    cite(s, "劉 (2022) 博士論文 Fig. 3.1, 3.3, 3.8")
-    notes(s, f"進め方：グループで「データ × 例題」を1組選び、{pg('23')} の6項目（出力・精度・入力・手法・ツール・限界）を10分で埋める。\n"
-             "(A) は講師の博論の題材。右下の図で、渦の振れ回り・PIV・圧力センサの配置を見せる。\n"
-             "水撃モデル：管路内の圧力波を1次元で解くモデル。VIV：渦励振（渦の放出で構造が揺れる）。\n"
-             "【アニメーション】データ（①〜④）→ 例題（(A)〜(D)）→ マトリクス → (A) の図 の順に")
+    cite(s, "博論 Fig. 3.1, 3.3, 3.8", to="apxA3")
+    notes(s, f"進め方：グループで (A) か (B) を選び、出発するデータ（①〜④）を決めて、{pg('23')} の6項目"
+             "（出力・精度・入力・手法・ツール・限界）を10分で埋める。\n"
+             "(A) は博論の題材。右下の図で、渦の振れ回り・PIV・圧力センサの配置を見せる。\n"
+             f"水撃：管の中の流れが急に変わると、圧力波が管を往復する現象。1D 水撃モデルはこれを管の長さ方向だけで解く。"
+             f"{pg('3')} 右の「ポンプ・管路・水車・制御」をつないだ系統モデルの管路の部分にあたる。\n"
+             "① の壁面圧力は、振動騒音の対象になる量。\n"
+             "【アニメーション】マトリクス → 例題（(A)・(B)）→ (A) の図 の順に")
 
 
 def s25a_answers(prs):
     rows = [
-        ["", "(A) PVC 脈動 → 1D 水撃", "(B) バッテリー熱 3D → 1D", "(C) 渦励振（VIV）", "(D) キャビテーション・旋回失速"],
+        ["", "(A) 渦の脈動 → 1D 水撃モデル", "(B) バッテリー熱 3D → 1D"],
         ["出力", "励振源（運動量・質量源）とドラフトチューブのパラメータ（波速など）→ 系統の共振解析",
-         "セル温度 → SIL/HIL・系統モデル（Siemens）／各セルの平均温度（Ansys）",
-         "構造の変位と後流の揚力 → lock-in の範囲と振幅", "サージか旋回失速か（安定限界）"],
+         "セル温度 → SIL/HIL・系統モデル（Siemens）／各セルの平均温度（Ansys）"],
         ["精度・\nレイテンシ", "固有振動数と共振条件が合うこと。レイテンシは問わない（設計段階）",
-         "3.92 h → 0.04 s（急速充電1サイクル、Siemens）／誤差約 1.4% で 10,000 倍（LTI、Ansys）",
-         "lock-in の範囲と振幅（Griffin plot）", "どちらが起きるかの判別（B パラメータと L/R で決まる）"],
+         "3.92 h → 0.04 s（急速充電1サイクル、Siemens）／誤差約 1.4% で 10,000 倍（LTI、Ansys）"],
         ["入力データ", "縮小模型の壁面圧力 ＋ 2D-PIV、LDV、外部加振。流量と Thoma 数を掃引",
-         "3D 解析6本（流量 0.025–0.1 kg/s、入口 15–21 °C）／CFD のステップ応答",
-         "St、C_{L0}、C_{D}、C_{M} ＋ 強制振動データ（A/ε）＋ lock-in データ（ε）",
-         "圧縮機特性 Ψ_{c}(Φ)（逆流側は測れない）／強制加振の伝達マトリクス、CFD 掃引"],
+         "3D 解析6本（流量 0.025–0.1 kg/s、入口 15–21 °C）／CFD のステップ応答"],
         ["手法", "1D 分布定数モデル ＋ パラメータ同定。励振源の強さを渦の軌道半径・周波数・循環に結ぶ",
-         "NN（温度）＋ 2-RC 等価回路／LTI 状態空間 ＋ 流量で LPV 補間",
-         "後流振動子（van der Pol）＋ 1自由度の構造 ＝ ODE 2本。A/ε = 40、ε = 0.3、A = 12",
-         "Moore–Greitzer：PDE → ODE 3本／伝達マトリクス ＋ K・M の同定"],
-        ["ツール", "SIMSEN、自前の PIV/LDV 処理", "STAR-CCM+、Simcenter ROM Builder、Amesim／Fluent・Icepak、Twin Builder",
-         "閉じた式で再現できる。別に Re = 200 の VIV 公開データとコード（Zenodo 22305666）", "式は公開（NASA CR-3878）"],
+         "NN（温度）＋ 2-RC 等価回路／LTI 状態空間 ＋ 流量で LPV 補間"],
+        ["ツール", "SIMSEN、自前の PIV/LDV 処理", "STAR-CCM+、Simcenter ROM Builder、Amesim／Fluent・Icepak、Twin Builder"],
         ["限界", "外挿：ある流量以下で渦が急に構造を失い、強度が激減（分岐）",
-         "外挿：流量を変えると LTI の仮定が破れる",
-         "y_{0} > 0.5 で揚力の増幅が際限なく増える（実験では減る）",
-         "単一調和の Galerkin 打ち切り：弱非線形で最も正確。多セル失速・spike 初生を逃す"],
+         "外挿：流量を変えると LTI の仮定が破れる"],
     ]
-    parts = [
-        (1, (1, 2), "(A) Favrel et al. 2015；Landry et al. 2016；Alligné et al. 2016　"
-                    "(B) Siemens（Ziegler 2023）；Hu et al., Hu & Ma（Ansys） — 詳細は付録A (3/3)",
-         "各グループの答えと、この表の行を1つずつ比べる。\n"
-         "(B) の数値はベンダーの自己申告。\n"
-         f"ブラックボックスの例（{pg('25b')}）：POD-LSTM（Zhang et al. 2026）は3つの固定運転点での再構成に留まる。\n"
-         "【アニメーション】列 (A) → (B) の順に"),
-        (2, (3, 4), "(C) Facchinetti et al. 2004　(D) Moore & Greitzer 1986；Yamamoto et al. 2020 — 詳細は付録A (3/3)",
-         "(D) の K：キャビテーションコンプライアンス、M：mass-flow gain factor。\n"
-         "【アニメーション】列 (C) → (D) の順に"),
-    ]
-    for part, cols, refs, note in parts:
-        s = new_slide(prs, LY_TABLE, f"思考実験：答え合わせ ({part}/3)",
-                      "答えの型は「物理の骨組み ＋ 少数パラメータの同定」", keep=(12,))
-        y = claim(s, "答えの型は「物理の骨組み＋少数パラメータを実験/CFDから同定」。"
-                     "純粋なブラックボックスは診断用か、固定運転点での再構成に留まる")
-        ph = [q for q in s.placeholders if q.placeholder_format.idx == 12][0]
-        sub = [[r[0]] + [r[c] for c in cols] for r in rows]
-        table(s, L, y + 0.1, [3.6, 14.0, 14.0], sub, size=16, header_size=17, row_h=1.45, placeholder=ph,
-              align_first=PP_ALIGN.CENTER, header_h=0.9)
-        cite(s, refs)
-        notes(s, note)
+    s = new_slide(prs, LY_TABLE, "思考実験：答え合わせ (1/3)",
+                  "答えの型は「物理の骨組み ＋ 少数パラメータの同定」", keep=(12,))
+    y = claim(s, "答えの型は「物理の骨組み＋少数パラメータを実験/CFDから同定」。"
+                 "純粋なブラックボックスは診断用か、固定運転点での再構成に留まる")
+    ph = [q for q in s.placeholders if q.placeholder_format.idx == 12][0]
+    table(s, L, y + 0.1, [3.6, 14.0, 14.0], rows, size=16, header_size=17, row_h=1.55, placeholder=ph,
+          align_first=PP_ALIGN.CENTER, header_h=0.9)
+    cite(s, "(A) Favrel+ 2015, Landry+ 2016, Alligné+ 2016｜(B) Siemens 2023, Hu+（Ansys）", to="apxA3")
+    notes(s, "各グループの答えと、この表の行を1つずつ比べる。\n"
+             "(B) の数値はベンダーの自己申告。\n"
+             f"(A) の物理の骨組みは次の {pg('25b')}、ブラックボックスとの比較は {pg('25c')}。\n"
+             "【アニメーション】列 (A) → (B) の順に")
 
 
 def s25b_skeleton(prs):
-    s = new_slide(prs, LY_TABLE, "思考実験：答え合わせ (3/3)", "(A) の物理の骨組み：2つのパラメータで脈動が決まる")
+    s = new_slide(prs, LY_TABLE, "思考実験：答え合わせ (2/3)", "(A) の物理の骨組み：2つのパラメータで脈動が決まる")
     y = claim(s, "軌道半径と循環の2パラメータで、壁面脈動の振幅が決まる → これが 1D モデルに渡す励振源")
     w1, h1 = picture(s, THESIS / "T4a.png", L, y, w=15.2)
     textbox(s, L, y + h1 + 0.05, 15.2, 1.2, [
@@ -1319,16 +1316,59 @@ def s25b_skeleton(prs):
         {"t": "r^{*}：渦の軌道半径（管の半径で無次元化）。理論は r^{*} = 1 で発散し、壁の近くでは近似の限界（博論 p.76）",
          "size": 13, "color": GREY},
     ], size=15)
-    cy = y + h2 + 2.8
-    card(s, rx, cy, 15.2, BODY_BOTTOM - cy, "比較：純粋なブラックボックス", [
-        {"t": "POD-LSTM（壁面センサ4点から、Zhang et al. 2026）：L2 誤差 7〜17%", "bullet": True},
-        {"t": "壁から離れたモードは予測できない（R² = −3.4 〜 −187）", "bullet": True},
-        {"t": "3つの固定運転点での再構成。運転点をまたぐ予測ではない", "bullet": True},
-    ], size=14)
-    cite(s, "劉 (2022) 博士論文 Fig. 3.31, 3.33, p.74–77｜Zhang et al., Energies 19(10):2300, 2026")
+    cy = y + h2 + 2.9
+    box(s, rx, cy, 15.2, min(3.2, BODY_BOTTOM - cy), [
+        {"t": "1D 水撃モデルに渡すもの", "bold": True, "color": ACC1, "size": 16, "space_after": 6},
+        {"t": "PIV で渦の軌道半径 r^{*} と循環を測る → 壁面脈動の振幅（C_{p}^{*} ≈ r^{*}）→ 励振源の強さ", "size": 15},
+    ], fill=HEAD_FILL, line=ACC1, line_w=1.0, align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.MIDDLE, margin=0.35)
+    cite(s, "博論 Fig. 3.31, 3.33, p.74–77", to="apxA3")
     notes(s, "(A) の答えの核：物理モデル（偏心した渦の圧力場）が骨組み。決めるパラメータは軌道半径と循環の2つ。"
              "これを PIV から同定すれば、1D モデルに渡す励振源になる。EPFL の Favrel らが励振源の強さを軌道半径・周波数・循環に結び付けたのと同じ考え方。\n"
-             "右下はブラックボックスとの比較。")
+             f"次の {pg('25c')} で、ブラックボックス（POD-LSTM）と比べる。")
+
+
+def s25c_blackbox(prs):
+    s = new_slide(prs, LY_TABLE, "思考実験：答え合わせ (3/3)", "比較：ブラックボックス（POD-LSTM、Zhang et al. 2026）")
+    y = claim(s, "壁のセンサだけで学習したブラックボックスは、センサから見えないモードを予測できない")
+    fh = BODY_BOTTOM - y - 1.0
+    fw = fh * image_size(PAPERS / "zhang2026_fig17.png")[0] / image_size(PAPERS / "zhang2026_fig17.png")[1]
+    fx = L + CW - fw
+    picture(s, PAPERS / "zhang2026_fig17.png", fx, y, h=fh)
+    textbox(s, fx - 0.3, y + fh + 0.02, fw + 0.3, 0.95, [
+        {"t": "Zhang et al. 2026, Fig. 17：PL 条件の POD 係数。青＝真値、赤破線＝LSTM の予測。"
+              "モード3（R² = −3.366）は外れる", "size": 12, "color": GREY}], size=12)
+    lw = fx - L - 0.5
+    rh = 4.0
+    rw, _ = picture(s, BUILD / "zhang2026_fig2_ring.png", L, y, h=rh)
+    textbox(s, L + rw + 0.3, y, lw - rw - 0.3, rh, [
+        {"t": "LES（3D 非定常 CFD）で3つの運転点（PL・BEP・HL）を計算", "bullet": True, "space_after": 3},
+        {"t": "壁面圧力センサ4点（左図の赤）× 20 時刻 → LSTM → POD 係数 → 3D 圧力場を再構成", "bullet": True,
+         "space_after": 3},
+        {"t": "運転点ごとに、同じ計算の中で学習と評価（180 組を 8:2 に分割）", "bullet": True},
+    ], size=14, anchor=MSO_ANCHOR.MIDDLE)
+    qy = y + rh + 0.3
+    qh = 3.9
+    box(s, L, qy, lw, qh, [
+        {"t": "要旨から（原文）", "bold": True, "color": ACC1, "size": 13, "space_after": 4},
+        {"t": "“PL Mode 3 and HL Mode 2, despite their regular temporal oscillations, yield strongly negative R² "
+              "values (−3.366 and −186.6) because their spatial structures are concentrated away from the wall.”",
+         "size": 13, "space_after": 6},
+        {"t": "→ 規則正しいモードでも、壁から離れた構造はセンサに映らず、予測に失敗", "size": 13},
+    ], fill=CARD, line=GREY, line_w=0.75, align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP, margin=0.3)
+    cy = qy + qh + 0.3
+    card(s, L, cy, lw, BODY_BOTTOM - cy, "物理の骨組み（" + pg("25b") + "）との違い", [
+        {"t": "再構成の L2 誤差：17.01%（PL）・7.17%（BEP）・12.91%（HL）", "bullet": True, "space_after": 3},
+        {"t": "学習できるのはセンサに映るモードだけ。運転点をまたぐ予測は扱っていない", "bullet": True,
+         "space_after": 3},
+        {"t": "骨組みは、測る量（軌道半径・循環）を物理で先に選ぶ", "bullet": True},
+    ], size=14)
+    cite(s, "Zhang+ 2026, Energies 19(10):2300, Fig. 2・17・要旨（CC BY）", to="apxA3")
+    notes(s, "比べる相手：Zhang et al. (2026)。フランシス水車のドラフトチューブを LES で計算し、壁の圧力センサ4点から"
+             "POD 係数を LSTM で予測して、3D の圧力場を再構成した。\n"
+             "PL：部分負荷、BEP：最高効率点、HL：高負荷。R²：決定係数。1 が完全一致、負は平均値で当てるより悪い。\n"
+             "右の図：モード1・2 は真値に沿うが、モード3 は真値が右上がりなのに予測はほぼ一定。"
+             "論文はこれを、モード3 の構造が壁から離れていてセンサに映らないためと説明している。\n"
+             "図と引用文は CC BY ライセンス（出典を示せば転載可）。")
 
 
 def s26_summary(prs):
@@ -1357,7 +1397,7 @@ def s26_summary(prs):
         {"t": "自分の研究のデータで、まず SVD を1回回してみてください。σ の並びを見るだけで、"
               "ROM が効きそうか分かります", "space_after": 14},
         {"t": "次回予告", "bold": True, "color": ACC1, "size": 15},
-        "第2回：Geometric Deep Learning（グラフやメッシュの上で学習する深層学習）",
+        "次回（シリーズの2）：Geometric Deep Learning（グラフやメッシュの上で学習する深層学習）",
     ], size=15)
     notes(s, "4つのゴールに1つずつ答えを返して締める。道具は名前の羅列だけ（注意点は来年度）。\n"
              "【アニメーション】3枚のカード：左から順に")
@@ -1420,22 +1460,18 @@ def appendix_refs(prs):
         ("A", "Landry et al., J. Hydraulic Res. 54:185–196, 2016"),
         ("A", "Alligné, Nicolet, Béguin et al., \"Hydroelectric System Response to Part Load Vortex Rope "
               "Excitation\", 28th IAHR Symposium on Hydraulic Machinery and Systems, 2016"),
-        ("A", "Zhang, Ma, Li, Kong, Xu, Huang, Wang, Energies 19(10):2300, 2026"),
+        ("A", "Zhang, Ma, Li, Kong, Xu, Huang, Wang, \"Reconstruction and Prediction of Three-Dimensional Transient "
+              "Flow Field in a Draft Tube of Francis Turbine Using Sparse Sensors and a POD-LSTM Network\", "
+              "Energies 19(10):2300, 2026, DOI 10.3390/en19102300（CC BY）"),
         ("B", "N. Ziegler, Siemens Simcenter blog, 15 Feb 2023（Simcenter ROM Builder によるバッテリー熱 ROM）"),
         ("B", "X. Hu et al., Ansys（LTI / LPV ROM、IMECE2011-62022）；X. Hu & Ma, Ansys blog, 2026"),
-        ("C", "Facchinetti, de Langre, Biolley, \"Coupling of structure and wake oscillators in vortex-induced "
-              "vibrations\", J. Fluids Struct. 19:123–140, 2004"),
-        ("C", "Zenodo record 22305666（Re = 200 VIV データとコード）"),
-        ("D", "Moore & Greitzer, J. Eng. Gas Turbines Power 108:68–76 and 231–239, 1986；NASA CR-3878"),
-        ("D", "Yamamoto, Yonezawa, Müller, Avellan, Tsujimoto, \"Evaluation of a Dynamic Transfer Matrix for a "
-              "Hydraulic Turbine\", J. Fluids Eng. 142(4):041204, 2020"),
     ]
     rows = [["例題", "文献"]] + [[a, b] for a, b in ex]
-    table(s, L, BODY_TOP, [2.0, CW - 2.0], rows, size=13, row_h=0.6, placeholder=ph, align_first=PP_ALIGN.CENTER)
-    textbox(s, L, 14.6, CW, 2.4, [
+    table(s, L, BODY_TOP, [2.0, CW - 2.0], rows, size=13, row_h=0.7, placeholder=ph, align_first=PP_ALIGN.CENTER)
+    textbox(s, L, 13.6, CW, 2.4, [
         {"t": "劉志豪, 早稲田大学博士論文「管路内旋回流れによる渦心振れ回り現象に関する研究」, 2022年2月"
               "（スライドでは「劉 (2022) 博士論文」「博論」と表記。頁は製本の印刷ページ）", "size": 13},
-        {"t": f"前回講義：早稲田大学「数値計算の“その先”」, 2026-07-17（{pg('3')} の図）", "size": 13},
+        {"t": f"前回講義：早稲田大学「数値計算の“その先”」, 2026-07-17（{pg('4')} で言及）", "size": 13},
     ], size=13)
 
 
@@ -1549,6 +1585,7 @@ def build():
     chapter(prs, "D", "演習", "Colab で、円柱後流と PIV 風データを解く（15分）")
     s13_ex1(prs)
     s14_ex2(prs)
+    s14b_thesis(prs)
     chapter(prs, "E", "手法マップ", "ROM ＝ 基底 ＋ 力学（12分）")
     s15_basis_dynamics(prs)
     s16_galerkin(prs)
@@ -1564,17 +1601,20 @@ def build():
     s24_task(prs)
     s25a_answers(prs)
     s25b_skeleton(prs)
+    s25c_blackbox(prs)
     chapter(prs, "H", "まとめ", "実装の道具・今日のゴール・次回予告・質疑（8分）")
     s26_summary(prs)
     appendix_refs(prs)
     appendix_chapters(prs)
     assert len(prs.slides) == len(ORDER), (len(prs.slides), len(ORDER))
+    for shape, key in LINKS:
+        shape.click_action.target_slide = prs.slides[PAGE[key] - 1]
     set_east_asian_font(prs)
     set_japanese_line_breaks(prs)
     cp = prs.core_properties
     cp.author = cp.last_modified_by = "Zhihao Liu"
-    cp.title = "Reduced Order Modeling 入門"
-    cp.subject = "流体機械演習B 第1回"
+    cp.title = "Reduced Order Modeling（ROM）：流れ場の低次元化と予測"
+    cp.subject = "流体機械演習B 第4回（3回入門シリーズの1）"
     cp.keywords = cp.comments = cp.category = ""
     clean_package(prs)
     OUT.parent.mkdir(exist_ok=True)

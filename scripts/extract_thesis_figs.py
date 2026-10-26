@@ -111,7 +111,7 @@ def write_readme(rows):
     L = []
     L.append("# 博論からの切り出し図（figures/thesis）\n")
     L.append("出典：劉志豪, 早稲田大学博士論文, 2022年2月「管路内旋回流れによる渦心振れ回り現象に関する研究」（`docs/Honbun-9040.pdf`）からの切り出し。")
-    L.append("**再配布不可。講師の判断なしに公開リポジトリへ push しない。**\n")
+    L.append("**再配布不可。公開リポジトリへ push しない。**\n")
     L.append("スライド上の出典表記：「劉 (2022) 博士論文 Fig. x.x」\n")
     L.append("生成：`python scripts/extract_thesis_figs.py`（切り出し枠はスクリプト内の定数）。印刷ページ = PDFページ - 4。")
     L.append("方法はいずれも「220 dpi で描画して切り出し」。埋め込み画像は細い帯状の画像を縦に並べたもので、1枚で図全体を覆うものは無かったため。")
