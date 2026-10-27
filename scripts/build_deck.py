@@ -565,7 +565,7 @@ def s03_why(prs):
 
 def s04_lowrank(prs):
     s = new_slide(prs, LY_ONE, "次元を削減する", "本当の意味は「低ランク構造」")
-    y = claim(s, "ROM の成立条件：高次元の状態データが持つ低ランク構造（r ≪ n）")
+    y = claim(s, "ROM の成立条件：高次元の状態データが持つ低ランク構造（r ≪ min(n,m)）")
     top = y + 0.8
     H = 7.5
     box(s, 1.8, top, 3.6, H, [{"t": "X", "size": 28, "bold": True}], fill=ACC4, radius_cm=0.05)
@@ -584,7 +584,7 @@ def s04_lowrank(prs):
     textbox(s, 8.4, top + 3.0, 6.6, 3.0, [
         {"t": "列＝空間パターン（形）", "size": 14, "color": ACC1, "bold": True},
         {"t": "行＝時間の重み", "size": 14, "color": RGBColor(0xC0, 0x7A, 0x1A), "bold": True},
-        {"t": "r ≪ n なら、少ない数で場全体を表現可能", "size": 14},
+        {"t": "r ≪ min(n,m) なら、少ない数で場全体を表現可能", "size": 14},
     ], size=14)
     x0 = 15.4
     textbox(s, x0, y + 0.3, CW + L - x0, BODY_BOTTOM - y - 0.3, [
